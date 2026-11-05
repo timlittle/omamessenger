@@ -176,6 +176,22 @@ func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, origina
 	return "", 0, 0, err
 }
 
+// removeIncomingMedia drops a received message's own downloaded file
+// and any display copy made from it, once the message itself is gone -
+// swept away for having expired, the same as removeAttachment does for
+// an outgoing message's own attachment, which never shares this cache.
+func removeIncomingMedia(ctx context.Context, cache MediaCache, logger Logger, m domain.Message) {
+	if m.Outgoing || m.Media == nil || cache == nil {
+		return
+	}
+
+	for _, id := range []string{cacheIdentity(m), displayCopyID(m)} {
+		if err := cache.RemoveByID(ctx, id); err != nil && logger != nil {
+			logger.Printf("media: remove expired download failed")
+		}
+	}
+}
+
 // displayCopyID names m's slot for its display copy in the media
 // cache, distinct from cacheIdentity's slot for the original bytes.
 // The "-view" suffix (not ".view") keeps it from matching as a prefix

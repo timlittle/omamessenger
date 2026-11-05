@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -70,6 +71,47 @@ func TestRunExpirySweeper_RemovesAnOutgoingMessageOnceItsPeriodRunsOut(t *testin
 		removed, ok := f.published.lastOf(app.EventMessageRemoved).(app.MessageRemoved)
 		if !ok || removed.MessageID != "m1" {
 			t.Errorf("published message.removed = %+v, %t, want m1", removed, ok)
+		}
+	})
+}
+
+// TestRunExpirySweeper_RemovesAnIncomingMessagesDownloadedMedia checks
+// that an incoming disappearing message's own downloaded media file is
+// removed from the media cache once it expires, not just an outgoing
+// attachment: the brief promises text, media and search entry are all
+// gone.
+func TestRunExpirySweeper_RemovesAnIncomingMessagesDownloadedMedia(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx, cancel := context.WithCancel(t.Context())
+		conv := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+		if err := os.MkdirAll(f.mediaDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		cached := filepath.Join(f.mediaDir, "m1.photo.jpg")
+		if err := os.WriteFile(cached, []byte("bytes"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		now := time.Now().UnixMilli()
+		if _, _, err := f.store.AddMessage(ctx, domain.Message{
+			ID: "m1", ConversationID: conv.ID, RemoteID: "r1", Text: "gone soon",
+			Status: domain.StatusReceived, Created: now, ExpireAfter: 5,
+			Media: &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.jpg"},
+		}); err != nil {
+			t.Fatalf("add message: %v", err)
+		}
+
+		stop := runExpirySweeper(ctx, cancel, f.commands)
+		defer stop()
+		synctest.Wait()
+
+		time.Sleep(6 * time.Second)
+		synctest.Wait()
+
+		if _, err := os.Stat(cached); !os.IsNotExist(err) {
+			t.Errorf("downloaded media still at %s after its message expired", cached)
 		}
 	})
 }

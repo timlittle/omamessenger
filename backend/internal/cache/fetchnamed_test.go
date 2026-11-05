@@ -219,3 +219,32 @@ func TestFetchNamed_SameIDFillsOnceUnderConcurrency(t *testing.T) {
 		t.Errorf("fill calls = %d, want 1", n)
 	}
 }
+
+// TestRemoveByID_RemovesWhateverNameFetchNamedGaveIt confirms
+// RemoveByID finds and deletes a cached file by the id it was filled
+// under, whatever extension it ended up with, and that removing an id
+// never cached, or already removed, is a quiet no-op.
+func TestRemoveByID_RemovesWhateverNameFetchNamedGaveIt(t *testing.T) {
+	t.Parallel()
+
+	c := cache.New(t.TempDir(), 1<<20)
+	fillCalls, nameCalls := 0, 0
+	path, err := c.FetchNamed(t.Context(), "m1", writeBytes(10, &fillCalls), nameAfter("m1", ".pdf", &nameCalls))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.RemoveByID(t.Context(), "m1"); err != nil {
+		t.Fatalf("RemoveByID(m1) = %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("file after RemoveByID = %v, want it gone", err)
+	}
+
+	if err := c.RemoveByID(t.Context(), "m1"); err != nil {
+		t.Errorf("RemoveByID on an already-removed id = %v, want nil", err)
+	}
+	if err := c.RemoveByID(t.Context(), "never-cached"); err != nil {
+		t.Errorf("RemoveByID on an id never cached = %v, want nil", err)
+	}
+}

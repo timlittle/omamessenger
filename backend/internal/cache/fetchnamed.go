@@ -49,6 +49,28 @@ func (c *Cache) FetchNamed(ctx context.Context, id string, fill func(ctx context
 	return path, c.prune(name)
 }
 
+// RemoveByID deletes the file cached for id, under whatever name
+// FetchNamed gave it, for a message removed before its cached media
+// should outlive it, such as one swept away for having expired. id
+// never cached, or already removed, is a quiet no-op.
+func (c *Cache) RemoveByID(_ context.Context, id string) error {
+	defer c.lockName(id)()
+
+	path, ok, err := c.findByID(id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cache: remove: %w", err)
+	}
+
+	return nil
+}
+
 // fillNamed writes a fresh file for id through fill, into a path only
 // this id's own fill ever uses, then asks nameFor what to keep it as
 // and renames it into place under that name, the same way fill does

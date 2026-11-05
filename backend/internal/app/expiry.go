@@ -23,6 +23,7 @@ type expirySweeper struct {
 	store    *store.Store
 	events   *events
 	outgoing OutgoingMedia
+	cache    MediaCache
 	logger   Logger
 
 	// changed wakes run's wait loop immediately, instead of leaving it
@@ -33,8 +34,8 @@ type expirySweeper struct {
 
 // newExpirySweeper prepares the sweeper. Call run once, from its own
 // goroutine, to start it.
-func newExpirySweeper(s *store.Store, events *events, outgoing OutgoingMedia, logger Logger) *expirySweeper {
-	return &expirySweeper{store: s, events: events, outgoing: outgoing, logger: logger, changed: newWakeable()}
+func newExpirySweeper(s *store.Store, events *events, outgoing OutgoingMedia, cache MediaCache, logger Logger) *expirySweeper {
+	return &expirySweeper{store: s, events: events, outgoing: outgoing, cache: cache, logger: logger, changed: newWakeable()}
 }
 
 // noticeArmed wakes the sweeper to recompute when it should next fire,
@@ -107,6 +108,7 @@ func (e *expirySweeper) sweep(ctx context.Context, m domain.Message) {
 	for _, d := range deleted {
 		e.events.publish(ctx, EventMessageRemoved, MessageRemoved{ConversationID: d.ConversationID, MessageID: d.ID})
 		removeAttachment(ctx, e.outgoing, e.logger, d)
+		removeIncomingMedia(ctx, e.cache, e.logger, d)
 	}
 
 	e.events.conversationChanged(ctx, m.ConversationID, before)

@@ -380,3 +380,9 @@ func (c *fakeCache) FetchNamed(context.Context, string, func(context.Context, st
 func (c *fakeCache) Adopt(context.Context, string, string) error {
 	return c.err
 }
+
+// RemoveByID is never exercised by a test using fakeCache; it only
+// ever fails the same way Fetch does.
+func (c *fakeCache) RemoveByID(context.Context, string) error {
+	return c.err
+}
