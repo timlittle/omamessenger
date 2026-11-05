@@ -1,13 +1,14 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import qs.Commons
+import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 
 // The bubble's time/status row: the sent time, an "edited" label if the
-// message was edited, and the delivery glyph for an outgoing message
-// that has not failed. Split out of MessageDelegate to keep that file
-// within the size guideline.
+// message was edited, a timer glyph for a disappearing message, and the
+// delivery glyph for an outgoing message that has not failed. Split out
+// of MessageDelegate to keep that file within the size guideline.
 Row {
   id: root
 
@@ -48,5 +49,31 @@ Row {
     textFormat: Text.PlainText
     color: root.message && root.message.status === "read" ? Theme.accent : Util.alpha(Theme.foreground, 0.5)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
+  }
+
+  Item {
+    id: expiry
+    visible: root.message && root.message.expiresAt > 0
+    width: expiryGlyph.implicitWidth
+    height: expiryGlyph.implicitHeight
+
+    Text {
+      id: expiryGlyph
+      text: root.message ? Format.expiryGlyph(root.message.expiresAt) : ""
+      textFormat: Text.PlainText
+      color: Util.alpha(Theme.foreground, 0.5)
+      font { family: Theme.font.family; pixelSize: Theme.font.caption }
+    }
+
+    Ui.PanelToolTip {
+      visible: expiryHover.containsMouse
+      text: root.message ? Format.expiryTooltip(root.message.expiresAt, root.nowMs) : ""
+    }
+
+    MouseArea {
+      id: expiryHover
+      anchors.fill: parent
+      hoverEnabled: true
+    }
   }
 }

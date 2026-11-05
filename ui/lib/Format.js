@@ -710,6 +710,47 @@ function statusGlyph(status) {
   return STATUS_GLYPHS[status] ?? '';
 }
 
+// EXPIRY_GLYPH marks a disappearing message, paired with a tooltip
+// giving the time left (see expiryTooltip): a glyph alone would rely
+// on colour or shape alone to carry the meaning.
+var EXPIRY_GLYPH = '⏳';
+
+// expiryGlyph returns the disappearing-message glyph once expiresAt is
+// armed, or "" for a message with no timer, or one not yet armed.
+function expiryGlyph(expiresAt) {
+  return expiresAt > 0 ? EXPIRY_GLYPH : '';
+}
+
+// expiryTooltip describes the time left until a disappearing message
+// is swept away: minutes for under an hour, hours for under a day,
+// otherwise days, rounded up so a message never reads as having no
+// time left while it is still here. A due or overdue timer, which the
+// sweeper has not yet caught up with, reads as "any moment".
+function expiryTooltip(expiresAt, nowMs) {
+  const remaining = expiresAt - nowMs;
+  if (remaining <= 0) {
+    return 'Disappears any moment';
+  }
+
+  const minutes = Math.ceil(remaining / 60000);
+  if (minutes < 60) {
+    return `Disappears in ${minutes} ${plural(minutes, 'minute')}`;
+  }
+
+  const hours = Math.ceil(remaining / 3600000);
+  if (hours < 24) {
+    return `Disappears in ${hours} ${plural(hours, 'hour')}`;
+  }
+
+  const days = Math.ceil(remaining / 86400000);
+  return `Disappears in ${days} ${plural(days, 'day')}`;
+}
+
+// plural suffixes unit with "s" unless n is exactly one.
+function plural(n, unit) {
+  return n === 1 ? unit : `${unit}s`;
+}
+
 // previewLine is the preview under a conversation's title. In groups it
 // names who wrote the last message.
 function previewLine(conv) {

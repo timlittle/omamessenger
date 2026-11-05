@@ -900,3 +900,26 @@ for (const [name, at, want] of retryingLabelCases) {
     assert.strictEqual(Format.retryingLabel(at, nowMs), want);
   });
 }
+
+test('expiryGlyph shows the timer glyph once armed, none otherwise', () => {
+  assert.strictEqual(Format.expiryGlyph(nowMs + 60000), '⏳');
+  assert.strictEqual(Format.expiryGlyph(0), '');
+});
+
+const expiryTooltipCases = [
+  ['minutes under an hour away', nowMs + 5 * 60 * 1000, 'Disappears in 5 minutes'],
+  ['singular minute', nowMs + 30 * 1000, 'Disappears in 1 minute'],
+  ['hours under a day away', nowMs + 3 * 3600 * 1000, 'Disappears in 3 hours'],
+  ['singular hour', nowMs + 61 * 60 * 1000, 'Disappears in 2 hours'],
+  ['days a day or more away', nowMs + 2 * 86400 * 1000, 'Disappears in 2 days'],
+  ['just over a day rounds up to two days', nowMs + 25 * 3600 * 1000, 'Disappears in 2 days'],
+  ['singular day', nowMs + 86400 * 1000, 'Disappears in 1 day'],
+  ['due now', nowMs, 'Disappears any moment'],
+  ['overdue', nowMs - 5000, 'Disappears any moment']
+];
+
+for (const [name, at, want] of expiryTooltipCases) {
+  test(`expiryTooltip ${name}`, () => {
+    assert.strictEqual(Format.expiryTooltip(at, nowMs), want);
+  });
+}

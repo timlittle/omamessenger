@@ -238,6 +238,7 @@ ShellRoot {
     if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
     if (!root.checkFailedRetrySchedule()) return;
+    if (!root.checkDisappearingTimer()) return;
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
     if (!root.checkPipeTable()) return;
@@ -352,6 +353,23 @@ ShellRoot {
     delegate.message = { id: "me2", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
     label = root.findText(Check.texts(delegate), "edited");
     if (label && label.visible) return Check.fail("edited label shown for a message that was not edited");
+    return true;
+  }
+
+  // checkDisappearingTimer verifies the timer glyph shows only for a
+  // message with an armed expiry (its tooltip wording is proven
+  // exhaustively in ui/lib's own node tests; see Format.expiryTooltip).
+  function checkDisappearingTimer(): bool {
+    delegate.message = { id: "me3", senderId: "s1", senderName: "Alex", text: "gone soon", outgoing: false, status: "delivered", created: root.now, expiresAt: root.now + 5 * 60 * 1000 };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+    t.waitForRendering(delegate);
+
+    const glyph = root.findText(Check.texts(delegate), "⏳");
+    if (!glyph || !glyph.visible) return Check.fail("timer glyph not shown for a disappearing message");
+
+    delegate.message = { id: "me4", senderId: "s1", senderName: "Alex", text: "stays", outgoing: false, status: "delivered", created: root.now };
+    const none = root.findText(Check.texts(delegate), "⏳");
+    if (none && none.visible) return Check.fail("timer glyph shown for a message with no disappearing timer");
     return true;
   }
 
