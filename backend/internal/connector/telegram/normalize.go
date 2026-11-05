@@ -150,21 +150,35 @@ func placeholderRemoteID(peer tg.PeerClass) (string, bool) {
 // history count as sent; whether they were read is not known here.
 // selfID is this account's own user id, for flagging a message that
 // mentions it (see mentions.go); it is 0 before Run has signed in, which
-// never mentions anyone.
+// never mentions anyone. A self-destructing photo or video is never
+// downloaded: its media is dropped and its text instead names what it
+// was (see domain.ViewOncePlaceholder), and the message's own TTLPeriod,
+// counted from this same call since Telegram always deletes it
+// message.date+ttl_period later regardless of whether it was read, is
+// carried for the sweeper to act on later.
 func message(m *tg.Message, e entities, selfID int64) domain.Message {
-	mentions, mentionsMe := mentionsFromEntities(m.Entities, e, selfID)
+	viewOnce, kind := selfDestructKind(m.Media)
+	text, mentions, mentionsMe := messageTextAndMentions(m, e, selfID, viewOnce, kind)
+
+	var messageMedia *domain.Media
+	if !viewOnce {
+		messageMedia = media(m.Media)
+	}
+
 	out := domain.Message{
-		RemoteID:   strconv.Itoa(m.ID),
-		Text:       messageText(m),
-		Outgoing:   m.Out,
-		Status:     domain.StatusReceived,
-		Created:    int64(m.Date) * 1000,
-		Media:      media(m.Media),
-		ReplyTo:    replyTo(m.ReplyTo),
-		Reactions:  reactions(m.Reactions),
-		Mentions:   mentions,
-		MentionsMe: mentionsMe,
-		Formatting: spansFromEntities(m.Entities, m.Message),
+		RemoteID:    strconv.Itoa(m.ID),
+		Text:        text,
+		Outgoing:    m.Out,
+		Status:      domain.StatusReceived,
+		Created:     int64(m.Date) * 1000,
+		Media:       messageMedia,
+		ReplyTo:     replyTo(m.ReplyTo),
+		Reactions:   reactions(m.Reactions),
+		Mentions:    mentions,
+		MentionsMe:  mentionsMe,
+		Formatting:  spansFromEntities(m.Entities, m.Message),
+		ViewOnce:    viewOnce,
+		ExpireAfter: int64(m.TTLPeriod),
 	}
 
 	if m.Out {
@@ -184,6 +198,57 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 	}
 
 	return out
+}
+
+// messageTextAndMentions is message's own text and @-mentions, or the
+// fixed view-once placeholder with no mentions at all once viewOnce is
+// true: a self-destructing photo or video this connector never
+// downloads carries nothing worth scanning for an @-mention token.
+func messageTextAndMentions(m *tg.Message, e entities, selfID int64, viewOnce bool, kind string) (text string, mentions []domain.Mention, mentionsMe bool) {
+	if viewOnce {
+		return domain.ViewOncePlaceholder(kind), nil, false
+	}
+
+	mentions, mentionsMe = mentionsFromEntities(m.Entities, e, selfID)
+
+	return messageText(m), mentions, mentionsMe
+}
+
+// selfDestructKind reports whether media is Telegram's own
+// self-destructing photo or video (its ttl_seconds set outside a
+// secret chat), the closest match to WhatsApp's view-once media, and
+// which kind it is for domain.ViewOncePlaceholder's wording. A document
+// with no recognised voice or video attribute reads as a video, the
+// common case for Telegram's own self-destructing media.
+func selfDestructKind(mm tg.MessageMediaClass) (viewOnce bool, kind string) {
+	switch m := mm.(type) {
+	case *tg.MessageMediaPhoto:
+		return m.TTLSeconds > 0, domain.MediaPhoto
+	case *tg.MessageMediaDocument:
+		if m.TTLSeconds <= 0 {
+			return false, ""
+		}
+
+		return true, selfDestructDocumentKind(m.Document)
+	default:
+		return false, ""
+	}
+}
+
+// selfDestructDocumentKind is selfDestructKind's own case for a
+// self-destructing document: a voice note keeps its own wording, and
+// every other document reads as a video.
+func selfDestructDocumentKind(dc tg.DocumentClass) string {
+	doc, ok := dc.(*tg.Document)
+	if !ok {
+		return domain.MediaVideo
+	}
+
+	if describe(doc).voice {
+		return domain.MediaVoice
+	}
+
+	return domain.MediaVideo
 }
 
 // replyTo reports the message a Telegram message answers, from its

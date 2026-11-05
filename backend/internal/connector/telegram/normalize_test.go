@@ -124,6 +124,63 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 	}
 }
 
+// TestMessage_ReportsADisappearingPeriod checks that TTLPeriod, which
+// Telegram's own documentation says counts from the message's date
+// regardless of whether it was read, is carried for the sweeper to act
+// on, and that an ordinary message carries none.
+func TestMessage_ReportsADisappearingPeriod(t *testing.T) {
+	t.Parallel()
+
+	disappearing := message(&tg.Message{ID: 1, Date: 1000, Message: "hi", TTLPeriod: 86400, PeerID: &tg.PeerUser{UserID: 42}}, testEntities(), 0)
+	if disappearing.ExpireAfter != 86400 {
+		t.Errorf("message.ExpireAfter = %d, want 86400", disappearing.ExpireAfter)
+	}
+
+	plain := message(&tg.Message{ID: 2, Date: 1000, Message: "hi", PeerID: &tg.PeerUser{UserID: 42}}, testEntities(), 0)
+	if plain.ExpireAfter != 0 {
+		t.Errorf("message.ExpireAfter = %d, want 0 for a message with no disappearing timer", plain.ExpireAfter)
+	}
+}
+
+// TestMessage_SelfDestructingMediaIsNeverDownloaded checks that a
+// self-destructing photo, video or voice note - Telegram's closest
+// match to WhatsApp's view-once media - is reported with no media at
+// all and a placeholder naming what it was.
+func TestMessage_SelfDestructingMediaIsNeverDownloaded(t *testing.T) {
+	t.Parallel()
+
+	voiceDoc := &tg.Document{Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Voice: true}}}
+	videoDoc := &tg.Document{Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeVideo{}}}
+
+	tests := []struct {
+		name  string
+		media tg.MessageMediaClass
+		want  string
+	}{
+		{"photo", &tg.MessageMediaPhoto{TTLSeconds: 10}, "View-once photo: open it on your phone"},
+		{"video document", &tg.MessageMediaDocument{TTLSeconds: 10, Document: videoDoc}, "View-once video: open it on your phone"},
+		{"voice document", &tg.MessageMediaDocument{TTLSeconds: 10, Document: voiceDoc}, "View-once voice note: open it on your phone"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := message(&tg.Message{ID: 1, Date: 1000, Media: tt.media, PeerID: &tg.PeerUser{UserID: 42}}, testEntities(), 0)
+			if !got.ViewOnce || got.Media != nil || got.Text != tt.want {
+				t.Errorf("message = ViewOnce=%t Media=%+v Text=%q, want ViewOnce, no media, %q",
+					got.ViewOnce, got.Media, got.Text, tt.want)
+			}
+		})
+	}
+
+	// A photo without TTLSeconds set is reported as usual, not view-once.
+	ordinary := message(&tg.Message{ID: 2, Date: 1000, Media: &tg.MessageMediaPhoto{}, PeerID: &tg.PeerUser{UserID: 42}}, testEntities(), 0)
+	if ordinary.ViewOnce || ordinary.Text != "[Photo]" {
+		t.Errorf("message = ViewOnce=%t Text=%q, want an ordinary photo", ordinary.ViewOnce, ordinary.Text)
+	}
+}
+
 func TestReactions_SkipsCustomEmojiAndMarksMine(t *testing.T) {
 	t.Parallel()
 

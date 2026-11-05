@@ -95,20 +95,29 @@ func unwrapBusinessOnce(msg *waE2E.Message) (*waE2E.Message, bool) {
 // message turns a WhatsApp message into ours: its text, media, reply
 // and the sender's current name. Outgoing messages, including ones
 // WhatsApp reports from another of this account's own devices, are
-// reported as already sent.
+// reported as already sent. A view-once photo, video or voice note is
+// never downloaded: its media is dropped and its text instead names
+// what it was (see domain.ViewOncePlaceholder), and a disappearing
+// message's own period, counted from this same call since WhatsApp
+// always starts the clock from sending, is carried for the sweeper to
+// act on later.
 func message(ctx context.Context, dev device, info types.MessageInfo, raw *waE2E.Message) domain.Message {
 	content := unwrap(raw)
-	text, mentions, mentionsMe := rewriteMentions(ctx, dev, messageText(content), contextInfo(content).GetMentionedJID())
+	viewOnce := isViewOnceWrapped(raw) || mediaViewOnce(content)
+
+	text, mentions, mentionsMe := messageTextAndMentions(ctx, dev, content, viewOnce)
+	var messageMedia *domain.Media
+	if !viewOnce {
+		messageMedia = media(content)
+	}
+
 	out := domain.Message{
-		RemoteID:   info.ID,
-		Text:       text,
-		Outgoing:   info.IsFromMe,
-		Status:     domain.StatusReceived,
-		Created:    info.Timestamp.UnixMilli(),
-		Media:      media(content),
-		ReplyTo:    replyTo(contextInfo(content)),
-		Mentions:   mentions,
-		MentionsMe: mentionsMe,
+		RemoteID: info.ID, Text: text,
+		Outgoing: info.IsFromMe, Status: domain.StatusReceived, Created: info.Timestamp.UnixMilli(),
+		Media: messageMedia, ReplyTo: replyTo(contextInfo(content)),
+		Mentions: mentions, MentionsMe: mentionsMe,
+		ViewOnce:    viewOnce,
+		ExpireAfter: int64(contextInfo(content).GetExpiration()),
 	}
 
 	if info.IsFromMe {
@@ -119,6 +128,72 @@ func message(ctx context.Context, dev device, info types.MessageInfo, raw *waE2E
 	out.SenderID = remoteID(info.Sender)
 	out.SenderName = senderDisplayName(ctx, dev, info)
 	return out
+}
+
+// messageTextAndMentions is message's own text and @-mentions, or the
+// fixed view-once placeholder with no mentions at all once viewOnce is
+// true: a wrapper this connector never downloads carries nothing worth
+// scanning for an @-mention token.
+func messageTextAndMentions(ctx context.Context, dev device, content *waE2E.Message, viewOnce bool) (text string, mentions []domain.Mention, mentionsMe bool) {
+	if viewOnce {
+		return domain.ViewOncePlaceholder(viewOnceKind(content)), nil, false
+	}
+
+	return rewriteMentions(ctx, dev, messageText(content), contextInfo(content).GetMentionedJID())
+}
+
+// isViewOnceWrapped reports whether msg, before unwrap peels it, is
+// wrapped in one of WhatsApp's view-once envelopes, including one
+// nested inside an ephemeral wrapper: whatsmeow's own live event
+// dispatch already peels a view-once wrapper before a connector ever
+// sees it live, carrying the signal instead on the inner media's own
+// ViewOnce field (see mediaViewOnce), but a history sync's
+// WebMessageInfo never goes through that, so the wrapper itself is
+// still what to look for there.
+func isViewOnceWrapped(msg *waE2E.Message) bool {
+	switch {
+	case msg.GetViewOnceMessage().GetMessage() != nil,
+		msg.GetViewOnceMessageV2().GetMessage() != nil,
+		msg.GetViewOnceMessageV2Extension().GetMessage() != nil:
+		return true
+	case msg.GetEphemeralMessage().GetMessage() != nil:
+		return isViewOnceWrapped(msg.GetEphemeralMessage().GetMessage())
+	default:
+		return false
+	}
+}
+
+// mediaViewOnce reports whether content's own media, once unwrapped,
+// carries WhatsApp's per-message view-once flag: how a live message
+// still says it was view-once once whatsmeow has already peeled its
+// wrapper away.
+func mediaViewOnce(content *waE2E.Message) bool {
+	switch {
+	case content.GetImageMessage() != nil:
+		return content.GetImageMessage().GetViewOnce()
+	case content.GetVideoMessage() != nil:
+		return content.GetVideoMessage().GetViewOnce()
+	case content.GetPtvMessage() != nil:
+		return content.GetPtvMessage().GetViewOnce()
+	case content.GetAudioMessage() != nil:
+		return content.GetAudioMessage().GetViewOnce()
+	default:
+		return false
+	}
+}
+
+// viewOnceKind names the kind of media a view-once message carried, for
+// domain.ViewOncePlaceholder's wording; a message with no media kind
+// this connector recognises reads as a photo, the common case.
+func viewOnceKind(content *waE2E.Message) string {
+	switch {
+	case content.GetVideoMessage() != nil, content.GetPtvMessage() != nil:
+		return domain.MediaVideo
+	case content.GetAudioMessage() != nil:
+		return domain.MediaVoice
+	default:
+		return domain.MediaPhoto
+	}
 }
 
 // historyMessage turns one message of a history sync conversation into

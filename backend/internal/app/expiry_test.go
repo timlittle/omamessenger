@@ -74,6 +74,31 @@ func TestRunExpirySweeper_RemovesAnOutgoingMessageOnceItsPeriodRunsOut(t *testin
 	})
 }
 
+// TestFetchMedia_NeverFetchesAViewOnceMessage checks that a view-once
+// message, which a connector reports with no media at all (see
+// whatsapp.message and telegram.message), is refused rather than
+// fetched: FetchMedia never even reaches the connector.
+func TestFetchMedia_NeverFetchesAViewOnceMessage(t *testing.T) {
+	f := newFixture(t, false)
+	ctx := t.Context()
+	conv := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: conv.ID, RemoteID: "r1",
+		Text: "View-once photo: open it on your phone", ViewOnce: true,
+	}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("FetchMedia() err = %v, want ErrInvalidInput", err)
+	}
+
+	if len(f.media.fetched) != 0 {
+		t.Errorf("fetched = %v, want the connector never asked for a view-once message", f.media.fetched)
+	}
+}
+
 // TestRunExpirySweeper_KeepsAPendingExpiryAcrossARestart checks that a
 // message armed before a restart is still swept once its period runs
 // out, by reopening the same database rather than relying on anything

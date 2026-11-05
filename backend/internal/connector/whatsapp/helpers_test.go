@@ -700,6 +700,9 @@ func strPtr(s string) *string { return &s }
 // boolPtr takes the address of a bool literal, for the same reason.
 func boolPtr(b bool) *bool { return &b }
 
+// uint32Ptr takes the address of a uint32 literal, for the same reason.
+func uint32Ptr(u uint32) *uint32 { return &u }
+
 // u32 takes the address of a uint32 literal, for the same reason.
 func u32(n uint32) *uint32 { return &n }
 
