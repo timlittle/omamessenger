@@ -16,10 +16,13 @@ require (
 	github.com/client9/gospell v0.9.2
 	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/godbus/dbus/v5 v5.2.4
+	github.com/google/uuid v1.6.0
 	github.com/gotd/td v0.162.0
+	github.com/rs/zerolog v1.35.1
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/mautrix-signal v0.2610.0
+	go.mau.fi/util v0.11.0
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.61.0
@@ -31,7 +34,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/andybalholm/brotli v1.2.7 // indirect
 	github.com/beeper/argo-go v1.1.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -45,11 +48,10 @@ require (
 	github.com/go-faster/jx v1.2.0 // indirect
 	github.com/go-faster/xor v1.0.0 // indirect
 	github.com/go-faster/yaml v0.4.6 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gotd/ige v0.3.0 // indirect
 	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
@@ -58,7 +60,6 @@ require (
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/tidwall/gjson v1.20.0 // indirect
@@ -66,7 +67,6 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/yuin/goldmark v1.8.6 // indirect
-	go.mau.fi/util v0.11.0 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
