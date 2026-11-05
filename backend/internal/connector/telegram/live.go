@@ -184,8 +184,16 @@ func (c *Connector) unread(ctx context.Context, sink connector.Sink, key string,
 
 // newMessage reports a message, first reporting its conversation so a
 // brand-new chat is never dropped (see resolveConversation). Our own
-// messages from other devices are history: they never notify.
+// messages from other devices are history: they never notify. A
+// service message carrying a chat-wide setting change is handled on
+// its own (see serviceMessage); every other kind is dropped the same
+// way a non-text message always was.
 func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
+	if service, ok := m.(*tg.MessageService); ok {
+		c.serviceMessage(ctx, sink, service, te)
+		return
+	}
+
 	msg, ok := m.(*tg.Message)
 	if !ok {
 		logDropped("not a text message")
@@ -206,6 +214,40 @@ func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.Me
 	}
 
 	sink.Incoming(ctx, c.account.ID, conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
+}
+
+// serviceMessage reports a chat's disappearing-message timer changing,
+// the only kind of service notice this connector acts on; any other
+// action is dropped like a non-text message, since there is nothing
+// here yet to do with it.
+func (c *Connector) serviceMessage(ctx context.Context, sink connector.Sink, m *tg.MessageService, te tg.Entities) {
+	action, ok := m.Action.(*tg.MessageActionSetMessagesTTL)
+	if !ok {
+		logDropped("not a text message")
+		return
+	}
+
+	e := fromUpdate(te)
+	c.learnNames(ctx, sink, e)
+	conv, ok := c.resolveConversation(ctx, sink, m.PeerID, e)
+	if !ok {
+		logDropped("unresolved peer")
+		return
+	}
+
+	c.reportDisappearingTimer(ctx, sink, conv.RemoteID, int64(action.Period))
+}
+
+// reportDisappearingTimer reports a chat's disappearing-message period,
+// dropping the report when the sink given to this run does not keep
+// it (see connector.DisappearingTimerReporter).
+func (c *Connector) reportDisappearingTimer(ctx context.Context, sink connector.Sink, remote string, seconds int64) {
+	reporter, ok := sink.(connector.DisappearingTimerReporter)
+	if !ok {
+		return
+	}
+
+	reporter.DisappearingTimer(ctx, c.account.ID, remote, seconds)
 }
 
 // resolveConversation returns the conversation a live message's peer

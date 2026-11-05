@@ -91,6 +91,7 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 		}
 		sink.Conversation(ctx, conv)
 		sink.Organized(ctx, c.account.ID, conv.RemoteID, dialog.Pinned, dialog.FolderID == archiveFolderID)
+		c.reportDisappearingTimer(ctx, sink, conv.RemoteID, int64(dialog.TTLPeriod))
 		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
 			sink.History(ctx, c.account.ID, conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
 		}

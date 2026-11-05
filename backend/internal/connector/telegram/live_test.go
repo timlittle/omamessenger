@@ -191,6 +191,46 @@ func TestNewMessage_FillsSenderNameFromAnEarlierResponseWhenThisOneCarriesNone(t
 	}
 }
 
+// TestNewMessage_ReportsATTLChangeServiceMessage confirms Telegram's
+// own notice that a chat's disappearing-message setting changed - a
+// *tg.MessageService carrying *tg.MessageActionSetMessagesTTL - reports
+// the new period through the sink, resolving its conversation the same
+// way an ordinary message does.
+func TestNewMessage_ReportsATTLChangeServiceMessage(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	m := &tg.MessageService{ID: 11, PeerID: &tg.PeerUser{UserID: 42}, Action: &tg.MessageActionSetMessagesTTL{Period: 604800}}
+
+	c.newMessage(t.Context(), &sink, m, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	want := []string{"conversation user:42:99 Nadia", "timer user:42:99 604800"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+// TestNewMessage_IgnoresOtherServiceMessages confirms a service message
+// this connector has no use for (anything but a TTL change) is dropped
+// with a category line, like any other non-text message.
+func TestNewMessage_IgnoresOtherServiceMessages(t *testing.T) {
+	buf := captureLog(t)
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	m := &tg.MessageService{ID: 11, PeerID: &tg.PeerUser{UserID: 42}, Action: &tg.MessageActionPinMessage{}}
+
+	c.newMessage(t.Context(), &sink, m, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none", got)
+	}
+	if got := buf.String(); !strings.Contains(got, "telegram: dropped message (reason=not a text message)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
+	}
+}
+
 func TestEditMessage_ReportsAnEditedMessageInAKnownConversation(t *testing.T) {
 	t.Parallel()
 

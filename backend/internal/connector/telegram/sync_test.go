@@ -47,8 +47,8 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 
 	want := []string{
 		"contact user:42:99 Nadia",
-		"conversation user:42:99 Nadia", "organized user:42:99 false false", "history user:42:99 9", "unread user:42:99 1",
-		"conversation chat:7 Crew", "organized chat:7 false false", "history chat:7 4", "unread chat:7 0",
+		"conversation user:42:99 Nadia", "organized user:42:99 false false", "timer user:42:99 0", "history user:42:99 9", "unread user:42:99 1",
+		"conversation chat:7 Crew", "organized chat:7 false false", "timer chat:7 0", "history chat:7 4", "unread chat:7 0",
 		"history chat:7 3", "unread chat:7 0",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
@@ -94,12 +94,50 @@ func TestSync_RecoversAChatTheLiveUpdateNeverReached(t *testing.T) {
 	}
 
 	want := []string{
-		"conversation user:42:99 Nadia", "organized user:42:99 false false",
+		"conversation user:42:99 Nadia", "organized user:42:99 false false", "timer user:42:99 0",
 		"history user:42:99 9", "unread user:42:99 1",
 		"history user:42:99 9", "unread user:42:99 1",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q: a chat Telegram still lists must be created and stored even if this helper never saw it live", got, want)
+	}
+}
+
+// TestSync_ReportsEachDialogsTTL confirms the dialog sync reports a
+// chat's own disappearing-message period, carried on the same
+// messages.getDialogs response as everything else listDialogs reads,
+// so no extra request is needed to learn it.
+func TestSync_ReportsEachDialogsTTL(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs: []tg.DialogClass{
+			&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TTLPeriod: 86400},
+			&tg.Dialog{Peer: &tg.PeerChat{ChatID: 7}},
+		},
+		Chats: []tg.ChatClass{&tg.Chat{ID: 7, Title: "Crew", Photo: &tg.ChatPhotoEmpty{}}},
+		Users: []tg.UserClass{nadia()},
+	})
+	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
+	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"timer user:42:99 86400", "timer chat:7 0"}
+	var got []string
+	for _, line := range sink.Lines() {
+		if strings.HasPrefix(line, "timer ") {
+			got = append(got, line)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("timer lines = %q, want %q", got, want)
 	}
 }
 
