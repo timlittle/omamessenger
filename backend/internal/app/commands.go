@@ -58,6 +58,7 @@ type Commands struct {
 	reminders       *reminders
 	retries         *retrier
 	scheduled       *scheduledSender
+	sweep           *expirySweeper
 	organizeNotices *organizeNotices
 	transcoder      Transcoder
 	decodeSlot      chan struct{}
@@ -145,6 +146,13 @@ func (c *Commands) RunReminders(ctx context.Context) {
 // alongside RunReminders.
 func (c *Commands) RunRetries(ctx context.Context) {
 	c.retries.run(ctx)
+}
+
+// RunExpirySweeper removes every disappearing message as soon as its
+// own timer runs out, until ctx is cancelled. main.go starts it as its
+// own goroutine once, alongside RunReminders and RunRetries.
+func (c *Commands) RunExpirySweeper(ctx context.Context) {
+	c.sweep.run(ctx)
 }
 
 // Accounts lists the signed-in accounts.

@@ -111,11 +111,20 @@ type NotificationClicked struct {
 type events struct {
 	store *store.Store
 	out   Publisher
+
+	// wake, once New wires it up, nudges the expiry sweeper to recompute
+	// when it should next fire: any event here might mean a message's
+	// disappearing timer was just armed, sooner than whatever the
+	// sweeper was already waiting for.
+	wake func()
 }
 
 // publish sends one event.
 func (e *events) publish(ctx context.Context, event string, data any) {
 	e.out.Publish(ctx, event, data)
+	if e.wake != nil {
+		e.wake()
+	}
 }
 
 // unreadTotal returns the unread total, or 0 when it cannot be read; the

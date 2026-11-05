@@ -149,3 +149,23 @@ func TestMediaPlaceholder(t *testing.T) {
 		}
 	}
 }
+
+func TestViewOncePlaceholder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		kind string
+		want string
+	}{
+		{domain.MediaPhoto, "View-once photo: open it on your phone"},
+		{domain.MediaVideo, "View-once video: open it on your phone"},
+		{domain.MediaVoice, "View-once voice note: open it on your phone"},
+		{"unknown", "View-once photo: open it on your phone"},
+	}
+
+	for _, tt := range tests {
+		if got := domain.ViewOncePlaceholder(tt.kind); got != tt.want {
+			t.Errorf("ViewOncePlaceholder(%q) = %q, want %q", tt.kind, got, tt.want)
+		}
+	}
+}

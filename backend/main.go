@@ -300,6 +300,7 @@ func runBackground(ctx context.Context, wg *sync.WaitGroup, d backgroundDeps) {
 	wg.Go(func() { d.commands.RunReminders(ctx) })
 	wg.Go(func() { d.commands.RunRetries(ctx) })
 	wg.Go(func() { d.commands.RunScheduledMessages(ctx) })
+	wg.Go(func() { d.commands.RunExpirySweeper(ctx) })
 	wg.Go(func() { d.ingest.Run(ctx) })
 	wg.Go(func() { d.outgoing.RunSweeper(ctx, outgoingSweepInterval, d.logger) })
 }

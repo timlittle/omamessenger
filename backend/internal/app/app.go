@@ -335,6 +335,8 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 	retries := newRetrier(d.Store)
 	scheduled := newScheduledSender(d.Store)
+	sweep := newExpirySweeper(d.Store, events, d.Outgoing, d.Logger)
+	events.wake = sweep.noticeArmed
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, archiveUnpinner: d.ArchiveUnpinner, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
@@ -344,6 +346,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		reminders:       newReminders(d.Store, d.Notifier, events, state),
 		retries:         retries,
 		scheduled:       scheduled,
+		sweep:           sweep,
 		organizeNotices: &organizeNotices{},
 		decodeSlot:      make(chan struct{}, decodeSlots),
 		refused:         newRefusedDisplayCopies(),

@@ -57,17 +57,24 @@ func confirmedDelivery(status string) bool {
 }
 
 // removeOutgoingAttachment drops m's outgoing attachment copy once its
-// message is deleted, the same reasoning as retireOutgoingAttachment:
-// a deleted message will never be retried, so its copy, if it still has
-// one, is only needed until now. Only this account's own sends ever have
-// a copy there, so an incoming message, whose file name its sender
-// chose, never reaches the outgoing area at all.
+// message is deleted or swept away for having expired, the same
+// reasoning as retireOutgoingAttachment: it will never be retried, so
+// its copy, if it still has one, is only needed until now.
 func (c *Commands) removeOutgoingAttachment(ctx context.Context, m domain.Message) {
-	if !m.Outgoing || m.Media == nil || c.outgoing == nil {
+	removeAttachment(ctx, c.outgoing, c.logger, m)
+}
+
+// removeAttachment drops m's outgoing attachment copy, the shared
+// implementation Commands.removeOutgoingAttachment and the expiry
+// sweeper both call. Only this account's own sends ever have a copy
+// there, so an incoming message, whose file name its sender chose,
+// never reaches the outgoing area at all.
+func removeAttachment(ctx context.Context, outgoing OutgoingMedia, logger Logger, m domain.Message) {
+	if !m.Outgoing || m.Media == nil || outgoing == nil {
 		return
 	}
 
-	if err := c.outgoing.Remove(ctx, m.ID, m.Media.FileName); err != nil && c.logger != nil {
-		c.logger.Printf("media: remove deleted attachment failed")
+	if err := outgoing.Remove(ctx, m.ID, m.Media.FileName); err != nil && logger != nil {
+		logger.Printf("media: remove deleted attachment failed")
 	}
 }
