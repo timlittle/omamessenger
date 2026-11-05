@@ -71,6 +71,44 @@ func TestSend_QuotesAReplyByStanzaIDAlone(t *testing.T) {
 	}
 }
 
+// TestSend_SetsExpirationOnAPlainTextMessageInADisappearingChat checks
+// that an outgoing plain-text message carries ContextInfo.Expiration
+// once the app layer has stamped it with the chat's own disappearing
+// timer (see domain.Message.ExpireAfter), so WhatsApp's own clients
+// treat it as ephemeral too instead of showing it as a normal message.
+func TestSend_SetsExpirationOnAPlainTextMessageInADisappearingChat(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+
+	m := domain.Message{ID: "local-6", Text: "hi", ExpireAfter: 604800}
+	if err := c.Send(t.Context(), directChat, m); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := dev.sent[0].msg.GetExtendedTextMessage().GetContextInfo()
+	if ctx.GetExpiration() != 604800 {
+		t.Errorf("expiration = %d, want 604800", ctx.GetExpiration())
+	}
+}
+
+// TestSend_PlainTextWithNoExpiryStaysABareConversationMessage checks
+// that a message in a chat with no disappearing timer is sent as a
+// bare Conversation message, unchanged from before ExpireAfter existed.
+func TestSend_PlainTextWithNoExpiryStaysABareConversationMessage(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+
+	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-7", Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if dev.sent[0].msg.GetConversation() != "hi" {
+		t.Errorf("message = %+v, want a bare Conversation message", dev.sent[0].msg)
+	}
+}
+
 func TestSend_RejectsAnAttachmentKindItCannotSend(t *testing.T) {
 	t.Parallel()
 

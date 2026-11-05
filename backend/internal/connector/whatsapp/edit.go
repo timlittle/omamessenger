@@ -58,7 +58,9 @@ func (c *Connector) EditMessage(ctx context.Context, conv domain.Conversation, r
 	}
 
 	text, mentionedJIDs := outgoingMentions(newText, mentions)
-	content := plainOrMentionedMessage(text, mentionedJIDs)
+	// An edit never carries its own expiration: the original message's
+	// own already governs it.
+	content := plainOrMentionedMessage(text, mentionedJIDs, 0)
 	msg := buildEdit(chat, key, remoteID, content)
 
 	return sendEdit(ctx, dev, chat, msg)

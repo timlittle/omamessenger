@@ -44,8 +44,9 @@ type OutgoingUpdate struct {
 }
 
 var (
-	_ connector.Sink        = (*Sink)(nil)
-	_ connector.PollUpdater = (*Sink)(nil)
+	_ connector.Sink                      = (*Sink)(nil)
+	_ connector.PollUpdater               = (*Sink)(nil)
+	_ connector.DisappearingTimerReporter = (*Sink)(nil)
 )
 
 // record adds one line, without trailing spaces from empty fields.
@@ -283,6 +284,11 @@ func (s *Sink) Organized(_ context.Context, _, remote string, pinned, archived b
 		s.organized = map[string]organizedFlags{}
 	}
 	s.organized[remote] = organizedFlags{pinned: pinned, archived: archived}
+}
+
+// DisappearingTimer records a chat's disappearing-message period.
+func (s *Sink) DisappearingTimer(_ context.Context, _, remote string, seconds int64) {
+	s.record("timer %s %d", remote, seconds)
 }
 
 // AuthStep records a sign-in step and keeps it, so a test can inspect

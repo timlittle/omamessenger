@@ -20,53 +20,63 @@ import (
 )
 
 // outgoingMessage builds the WhatsApp message proto for m: its text
-// alone, or, when it replies to another message or @-mentions a group
-// member, an extended text message carrying the ContextInfo either
-// needs.
-func outgoingMessage(ctx context.Context, media *mediaStore, conversationRemoteID string, chat types.JID, m domain.Message) *waE2E.Message {
+// alone, or, when it replies to another message, @-mentions a group
+// member, or sits in a chat with disappearing messages on, an extended
+// text message carrying the ContextInfo any of those needs.
+func outgoingMessage(ctx context.Context, target sendTarget, m domain.Message) *waE2E.Message {
 	text, mentionedJIDs := outgoingMentions(m.Text, m.Mentions)
+	expireAfter := uint32(m.ExpireAfter)
 	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
-		return plainOrMentionedMessage(text, mentionedJIDs)
+		return plainOrMentionedMessage(text, mentionedJIDs, expireAfter)
 	}
 
-	info := quoteContext(ctx, media, conversationRemoteID, chat, m.ReplyTo)
+	info := quoteContext(ctx, target, m.ReplyTo, expireAfter)
 	info.MentionedJID = mentionedJIDs
 
 	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strp(text), ContextInfo: info}}
 }
 
 // plainOrMentionedMessage builds a text-only message proto: a plain
-// conversation message, or, once text carries any @-mentions, an
-// extended text message with the ContextInfo WhatsApp's clients need to
-// render them. Shared by outgoingMessage's own no-reply case and by
-// EditMessage (see edit.go), which never threads a reply.
-func plainOrMentionedMessage(text string, mentionedJIDs []string) *waE2E.Message {
-	if len(mentionedJIDs) == 0 {
+// conversation message, or, once text carries any @-mentions or the
+// chat's own disappearing timer applies, an extended text message with
+// the ContextInfo WhatsApp's clients need to render either. Shared by
+// outgoingMessage's own no-reply case and by EditMessage (see edit.go),
+// which always passes 0 for expireAfter: an edit never needs its own
+// expiration, since the original message's already governs it.
+func plainOrMentionedMessage(text string, mentionedJIDs []string, expireAfter uint32) *waE2E.Message {
+	if len(mentionedJIDs) == 0 && expireAfter == 0 {
 		return &waE2E.Message{Conversation: strp(text)}
 	}
 
-	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-		Text: strp(text), ContextInfo: &waE2E.ContextInfo{MentionedJID: mentionedJIDs},
-	}}
+	info := &waE2E.ContextInfo{MentionedJID: mentionedJIDs}
+	if expireAfter > 0 {
+		info.Expiration = &expireAfter
+	}
+
+	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strp(text), ContextInfo: info}}
 }
 
-// quoteContext builds the ContextInfo that quotes reply: its stanza id
-// always, and, when message_keys has a record of who sent it, the
-// participant to credit it to in a group and its text, so the
-// recipient's client can render the quote even before it has the
-// original cached.
-func quoteContext(ctx context.Context, media *mediaStore, conversationRemoteID string, chat types.JID, reply *domain.Reply) *waE2E.ContextInfo {
+// quoteContext builds the ContextInfo that quotes reply and carries
+// expireAfter, the chat's own disappearing timer in seconds (0 for
+// none): the stanza id always, and, when message_keys has a record of
+// who sent it, the participant to credit it to in a group and its
+// text, so the recipient's client can render the quote even before it
+// has the original cached.
+func quoteContext(ctx context.Context, target sendTarget, reply *domain.Reply, expireAfter uint32) *waE2E.ContextInfo {
 	info := &waE2E.ContextInfo{StanzaID: strp(reply.RemoteID)}
-	if media == nil {
+	if expireAfter > 0 {
+		info.Expiration = &expireAfter
+	}
+	if target.media == nil {
 		return info
 	}
 
-	key, found, err := media.messageKeyFor(ctx, conversationRemoteID, reply.RemoteID)
+	key, found, err := target.media.messageKeyFor(ctx, target.conversationRemoteID, reply.RemoteID)
 	if err != nil || !found {
 		return info
 	}
 
-	if !key.fromMe && chat.Server == types.GroupServer && key.senderID != "" {
+	if !key.fromMe && target.chat.Server == types.GroupServer && key.senderID != "" {
 		info.Participant = strp(key.senderID)
 	}
 	if reply.Text != "" {

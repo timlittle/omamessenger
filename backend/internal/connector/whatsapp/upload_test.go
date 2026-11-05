@@ -88,6 +88,28 @@ func TestSend_UploadsAPhotoWithItsCaptionAndThumbnail(t *testing.T) {
 	}
 }
 
+// TestSend_SetsExpirationOnAnUploadedAttachmentInADisappearingChat
+// checks that an attachment sent with no reply still carries
+// ContextInfo.Expiration once the chat's disappearing timer is on,
+// since whatsmeow's attachment submessages have no ContextInfo at all
+// unless one is built for them.
+func TestSend_SetsExpirationOnAnUploadedAttachmentInADisappearingChat(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, _ := connectedMediaFixture(t)
+	path := writeAttachment(t, "photo.png", testPNG(t))
+	m := domain.Message{ID: "local-2", Media: &domain.Media{Kind: domain.MediaPhoto, Path: path}, ExpireAfter: 604800}
+
+	if err := c.Send(t.Context(), directChat, m); err != nil {
+		t.Fatal(err)
+	}
+
+	img := dev.sent[0].msg.GetImageMessage()
+	if img.GetContextInfo().GetExpiration() != 604800 {
+		t.Errorf("expiration = %d, want 604800", img.GetContextInfo().GetExpiration())
+	}
+}
+
 func TestSend_UploadsAVideoWithItsCaption(t *testing.T) {
 	t.Parallel()
 

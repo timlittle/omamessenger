@@ -61,22 +61,29 @@ func uploadAttachment(ctx context.Context, dev device, target sendTarget, m doma
 
 	content := attachmentContent{
 		data: data, mimetype: sniffMimeType(data), fileName: m.Media.FileName,
-		caption: wireCaption(m), ctxInfo: attachmentQuoteContext(ctx, target, m.ReplyTo),
+		caption: wireCaption(m), ctxInfo: attachmentQuoteContext(ctx, target, m.ReplyTo, uint32(m.ExpireAfter)),
 	}
 
 	return attachmentMessage(kind, resp, content), nil
 }
 
 // attachmentQuoteContext is quoteContext, guarded the same way
-// outgoingMessage guards it for plain text: nil when m does not reply
-// to anything, since quoteContext itself assumes a real reply to
-// build a stanza id from.
-func attachmentQuoteContext(ctx context.Context, target sendTarget, reply *domain.Reply) *waE2E.ContextInfo {
+// outgoingMessage guards it for plain text: nil when m neither replies
+// to anything nor needs an expiration, since quoteContext itself
+// assumes a real reply to build a stanza id from; a disappearing chat
+// with no reply still needs a bare ContextInfo carrying only
+// expireAfter, or WhatsApp's own clients show the attachment as a
+// normal, permanent message.
+func attachmentQuoteContext(ctx context.Context, target sendTarget, reply *domain.Reply, expireAfter uint32) *waE2E.ContextInfo {
 	if reply == nil || reply.RemoteID == "" {
-		return nil
+		if expireAfter == 0 {
+			return nil
+		}
+
+		return &waE2E.ContextInfo{Expiration: &expireAfter}
 	}
 
-	return quoteContext(ctx, target.media, target.conversationRemoteID, target.chat, reply)
+	return quoteContext(ctx, target, reply, expireAfter)
 }
 
 // attachmentKind says which whatsmeow media type an attachment of

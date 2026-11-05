@@ -83,6 +83,25 @@ func TestSend_QuotesByStanzaIDAloneWhenTheQuoteIsNotRecorded(t *testing.T) {
 	}
 }
 
+// TestSend_SetsExpirationOnAQuotedReplyInADisappearingChat checks that
+// a reply's ContextInfo carries both the quote and the chat's own
+// disappearing timer at once.
+func TestSend_SetsExpirationOnAQuotedReplyInADisappearingChat(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, _ := connectedMediaFixture(t)
+
+	m := domain.Message{ID: "local-5", Text: "sure", ExpireAfter: 86400, ReplyTo: &domain.Reply{RemoteID: "quoted-5"}}
+	if err := c.Send(t.Context(), directChat, m); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := dev.sent[0].msg.GetExtendedTextMessage().GetContextInfo()
+	if ctx.GetStanzaID() != "quoted-5" || ctx.GetExpiration() != 86400 {
+		t.Errorf("context = %+v, want the quote and the expiration both set", ctx)
+	}
+}
+
 func TestSend_RecordsItsOwnMessageKeyAsFromMe(t *testing.T) {
 	t.Parallel()
 

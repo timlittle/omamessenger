@@ -14,8 +14,7 @@ import (
 func TestMessages_ValidatesInput(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
 	page, more, unavailable, err := f.commands.Messages(ctx, "chat", "", 0)
@@ -63,6 +62,36 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	}
 }
 
+// TestSend_ArmsExpiryFromTheChatsDisappearingTimer confirms a message
+// sent into a chat with a disappearing timer carries that same period,
+// counted from now like every outgoing message, so it vanishes locally
+// on the same schedule the service applies on its own end, and that a
+// chat with no timer sends an ordinary message.
+func TestSend_ArmsExpiryFromTheChatsDisappearingTimer(t *testing.T) {
+	t.Parallel()
+
+	f, ctx := freshFixture(t)
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, err := f.store.SetDisappearingTimer(ctx, chat.ID, 86400); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := f.commands.Send(ctx, "chat", "send this", app.SendOptions{})
+	if err != nil || m.ExpiresAt == 0 {
+		t.Fatalf("Send into a disappearing chat = %+v, %v; want an armed expiry", m, err)
+	}
+
+	if sent := f.dispatcher.last(); sent.ExpireAfter != 86400 {
+		t.Errorf("dispatched message.ExpireAfter = %d, want 86400", sent.ExpireAfter)
+	}
+
+	plain := f.conversation(t, "plain", "Plain", domain.KindDirect)
+	m, err = f.commands.Send(ctx, plain.ID, "hi", app.SendOptions{})
+	if err != nil || m.ExpiresAt != 0 {
+		t.Fatalf("Send into an ordinary chat = %+v, %v; want no expiry", m, err)
+	}
+}
+
 func TestSend_StoresMentions(t *testing.T) {
 	t.Parallel()
 
@@ -94,8 +123,7 @@ func TestSend_StoresMentions(t *testing.T) {
 func TestSend_ReturnsTheConfirmedMessageWhenTheDispatcherIsFast(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.onRun = func(m domain.Message) {
 		f.ingest.OutgoingStatus(ctx, m.ID, "remote-1", domain.StatusSent)
@@ -110,8 +138,7 @@ func TestSend_ReturnsTheConfirmedMessageWhenTheDispatcherIsFast(t *testing.T) {
 func TestSend_UpdatesActivityButKeepsAHiddenChatHidden(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 
 	if _, err := f.commands.SetHidden(ctx, chat.ID, true); err != nil {
@@ -172,8 +199,7 @@ func TestSend_WithReplyToFillsTheQuoteAndPassesItToTheConnector(t *testing.T) {
 func TestSend_WithReplyToAContactsMessageCarriesThatSendersID(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "original"))
 
@@ -221,8 +247,7 @@ func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 func TestSend_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.conversation(t, "other", "Other", domain.KindDirect)
 
@@ -257,8 +282,7 @@ func TestSend_RejectsInvalidInput(t *testing.T) {
 func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.err = errors.New("offline")
 
@@ -301,8 +325,7 @@ func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 func TestMessages_LoadsOlderHistoryFromTheService(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	for _, m := range []domain.Message{
 		{ID: "m50", ConversationID: "chat", RemoteID: "50", Text: "x", Created: 50},
@@ -367,8 +390,7 @@ func TestMessages_ReportsHistoryUnavailableWhenTheServiceCannotBeReached(t *test
 func TestMessages_FillsInMediaTheServiceReportedTooLateToStore(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	for _, m := range []domain.Message{
 		{ID: "m1", ConversationID: "chat", RemoteID: "40", Text: "[Photo]", Created: 1},
@@ -421,8 +443,7 @@ func TestMessages_FillsInMediaTheServiceReportedTooLateToStore(t *testing.T) {
 func TestMessages_KeepsTheStoredPageWhenRefreshingFails(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	if _, _, err := f.store.AddMessage(ctx, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "40", Text: "[Photo]", Created: 1}); err != nil {
 		t.Fatal(err)
@@ -438,8 +459,7 @@ func TestMessages_KeepsTheStoredPageWhenRefreshingFails(t *testing.T) {
 func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.history.older = []domain.Message{
 		{ID: "m30", RemoteID: "30", Text: "c", Created: 30, Status: domain.StatusReceived},
@@ -472,8 +492,7 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 func TestMessages_OlderHistoryLeavesRealUnreadAloneRegardlessOfMessageMix(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.ingest.Unread(ctx, "wa", chat.RemoteID, 5)
 	f.published.take()
@@ -503,8 +522,7 @@ func TestMessages_OlderHistoryLeavesRealUnreadAloneRegardlessOfMessageMix(t *tes
 func TestMessages_OlderHistorySurvivesAMarkReadThatLandsWhileItIsInFlight(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.ingest.Unread(ctx, "wa", chat.RemoteID, 12)
 	f.published.take()

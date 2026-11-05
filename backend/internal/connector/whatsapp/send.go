@@ -80,7 +80,7 @@ type sendTarget struct {
 // message (see reply.go's outgoingMessage), or an uploaded attachment.
 func buildOutgoing(ctx context.Context, dev device, target sendTarget, m domain.Message) (*waE2E.Message, error) {
 	if m.Media == nil {
-		return outgoingMessage(ctx, target.media, target.conversationRemoteID, target.chat, m), nil
+		return outgoingMessage(ctx, target, m), nil
 	}
 
 	return uploadAttachment(ctx, dev, target, m)

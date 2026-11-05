@@ -13,8 +13,7 @@ import (
 func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.commands.ApplySettings(withDetail(app.DefaultSettings(), policy.DetailNameAndMessage))
 
@@ -39,8 +38,7 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 func TestIncoming_KeepsAPinnedChatPinned(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 
 	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
@@ -68,8 +66,7 @@ func TestIncoming_KeepsAPinnedChatPinned(t *testing.T) {
 func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	group := f.conversation(t, "group", "Weekend plans", domain.KindGroup)
 	other := f.conversation(t, "other", "Different chat", domain.KindDirect)
 
@@ -109,8 +106,7 @@ func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *te
 func TestSenderName_CorrectsAnAlreadyStoredReplyQuoteToo(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, domain.Message{
@@ -141,8 +137,7 @@ func TestSenderName_CorrectsAnAlreadyStoredReplyQuoteToo(t *testing.T) {
 func TestIncoming_DoesNotNotifyForAMessageMissedWhileOffline(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	m := incoming("in-1", "From this morning")
 	m.Created = time.Now().Add(-time.Hour).UnixMilli()
@@ -161,8 +156,7 @@ func TestIncoming_DoesNotNotifyForAMessageMissedWhileOffline(t *testing.T) {
 func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
@@ -175,8 +169,7 @@ func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	group := f.conversation(t, "group", "Climbing Crew", domain.KindGroup)
 
@@ -259,8 +252,7 @@ func TestIncoming_IgnoresUnknownConversations(t *testing.T) {
 func TestHistory_NeverNotifiesOrReadsOnArrival(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
 		t.Fatal(err)
@@ -291,8 +283,7 @@ func TestHistory_NeverNotifiesOrReadsOnArrival(t *testing.T) {
 func TestEdited_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
 	f.published.take()
@@ -312,8 +303,7 @@ func TestEdited_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 func TestEdited_UpdatesFormatting(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
 	f.published.take()
@@ -330,8 +320,7 @@ func TestEdited_UpdatesFormatting(t *testing.T) {
 func TestEdited_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 
 	f.ingest.Edited(ctx, "wa", "nowhere", domain.Message{RemoteID: "e1", Text: "x"})
@@ -345,8 +334,7 @@ func TestEdited_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 func TestReacted_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "hi"))
 	f.published.take()
@@ -367,8 +355,7 @@ func TestReacted_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 func TestReacted_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 
 	f.ingest.Reacted(ctx, "wa", "nowhere", "e1", []domain.Reaction{{Emoji: "👍", Count: 1}})
@@ -382,8 +369,7 @@ func TestReacted_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 func TestDeleted_RemovesMessagesAndPublishes(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("d1", "first"))
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("d2", "second"))
@@ -421,8 +407,7 @@ func TestDeleted_IgnoresAnEmptyOrUnknownBatch(t *testing.T) {
 func TestUnread_TakesTheServicesCount(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	f.ingest.Unread(ctx, "wa", chat.RemoteID, 2)
 	f.published.take()
@@ -484,8 +469,7 @@ func TestAccountStatus_PublishesAttachmentLimit(t *testing.T) {
 func TestContactAndConversation_AreRecorded(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 
 	f.ingest.Contact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "Ben"})
 	f.ingest.Conversation(ctx, domain.Conversation{AccountID: "wa", RemoteID: "r1", Title: "Ben", Kind: domain.KindGroup, Members: 4})
@@ -508,8 +492,7 @@ func TestContactAndConversation_AreRecorded(t *testing.T) {
 func TestOutgoingStatus_PublishesForwardProgressOnly(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f, ctx := freshFixture(t)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	m, _ := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	f.published.take()
@@ -537,5 +520,51 @@ func TestIncoming_NotifiesWithNoNameOrTextByDefault(t *testing.T) {
 
 	if got := f.notifier.all(); !slices.Equal(got, []string{"OmaMessenger: New message"}) {
 		t.Errorf("notifications = %v, want only the generic notice", got)
+	}
+}
+
+// TestDisappearingTimer_UpdatesAndPublishesOnlyOnAChange confirms
+// DisappearingTimer records a chat's period and publishes it, but only
+// when it actually changes: a connector re-reporting what is already
+// stored must not nag the UI with nothing changed.
+func TestDisappearingTimer_UpdatesAndPublishesOnlyOnAChange(t *testing.T) {
+	t.Parallel()
+
+	f, ctx := freshFixture(t)
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	f.ingest.DisappearingTimer(ctx, "wa", chat.RemoteID, 0)
+	if got := f.published.take(); len(got) != 0 {
+		t.Errorf("events after reporting the already-stored period = %v, want none", got)
+	}
+
+	f.ingest.DisappearingTimer(ctx, "wa", chat.RemoteID, 86400)
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events after an actual change = %v, want one conversation.updated", got)
+	}
+
+	stored, err := f.store.Conversation(ctx, chat.ID)
+	if err != nil || stored.DisappearingTimer != 86400 {
+		t.Fatalf("Conversation after DisappearingTimer = %+v, %v; want 86400", stored, err)
+	}
+
+	f.ingest.DisappearingTimer(ctx, "wa", chat.RemoteID, 86400)
+	if got := f.published.take(); len(got) != 0 {
+		t.Errorf("events after reporting the current period again = %v, want none", got)
+	}
+}
+
+// TestDisappearingTimer_IgnoresAnUnknownConversation confirms a report
+// naming a conversation this account has never seen is silently
+// ignored, the same as Organized does.
+func TestDisappearingTimer_IgnoresAnUnknownConversation(t *testing.T) {
+	t.Parallel()
+
+	f, ctx := freshFixture(t)
+
+	f.ingest.DisappearingTimer(ctx, "wa", "no-such-conversation", 86400)
+
+	if got := f.published.take(); len(got) != 0 {
+		t.Errorf("events for an unknown conversation = %v, want none", got)
 	}
 }

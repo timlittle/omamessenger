@@ -1,10 +1,5 @@
 package whatsapp
 
-// normalize_expiry_test.go checks message's own handling of
-// disappearing and view-once messages, split out of
-// normalize_message_test.go to keep that file within this codebase's
-// size guideline.
-
 import (
 	"testing"
 
@@ -48,24 +43,5 @@ func TestMessage_ViewOnceIsNeverDownloaded(t *testing.T) {
 					tt.name, got.ViewOnce, got.Media, got.Text, tt.want)
 			}
 		})
-	}
-}
-
-// TestMessage_ReportsADisappearingPeriod checks that a disappearing
-// message's own period, from ContextInfo.Expiration, is carried for
-// the sweeper to act on, and that an ordinary message carries none.
-func TestMessage_ReportsADisappearingPeriod(t *testing.T) {
-	t.Parallel()
-
-	disappearing := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{
-		ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strPtr("hi"), ContextInfo: &waE2E.ContextInfo{Expiration: uint32Ptr(86400)}},
-	})
-	if disappearing.ExpireAfter != 86400 {
-		t.Errorf("message.ExpireAfter = %d, want 86400", disappearing.ExpireAfter)
-	}
-
-	plain := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{Conversation: strPtr("hi")})
-	if plain.ExpireAfter != 0 {
-		t.Errorf("message.ExpireAfter = %d, want 0 for a message with no disappearing timer", plain.ExpireAfter)
 	}
 }

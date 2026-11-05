@@ -478,3 +478,21 @@ func FuzzMessage(f *testing.F) {
 		}
 	})
 }
+
+// TestMessage_ReportsADisappearingPeriod checks that a disappearing
+// message's own period, from ContextInfo.Expiration, is carried for
+// the sweeper to act on, and that an ordinary message carries none.
+func TestMessage_ReportsADisappearingPeriod(t *testing.T) {
+	t.Parallel()
+
+	disappearing := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{
+		ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strPtr("hi"), ContextInfo: &waE2E.ContextInfo{Expiration: uint32Ptr(86400)}},
+	})
+	if disappearing.ExpireAfter != 86400 {
+		t.Errorf("message.ExpireAfter = %d, want 86400", disappearing.ExpireAfter)
+	}
+
+	if plain := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{Conversation: strPtr("hi")}); plain.ExpireAfter != 0 {
+		t.Errorf("message.ExpireAfter = %d, want 0 for a message with no disappearing timer", plain.ExpireAfter)
+	}
+}

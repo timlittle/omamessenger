@@ -6,7 +6,6 @@ package whatsapp
 // unexported sync step.
 
 import (
-	"errors"
 	"reflect"
 	"slices"
 	"strings"
@@ -18,8 +17,6 @@ import (
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
-
-	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // historyMsg builds one history sync message with text, FromMe and a
@@ -71,90 +68,23 @@ func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T)
 		"contact 15551234567@s.whatsapp.net Nadia",
 		"conversation 15551234567@s.whatsapp.net Nadia",
 		"organized 15551234567@s.whatsapp.net true false",
+		"timer 15551234567@s.whatsapp.net 0",
 		"history 15551234567@s.whatsapp.net H1",
 		"unread 15551234567@s.whatsapp.net 1",
+		// Resolving this group's title needs a group-info lookup (its
+		// member count is not synced), which reports its own timer
+		// before the conversation itself is reported; syncConversation
+		// then reports the sync's own authoritative timer again right
+		// after, the same value here.
+		"timer 12345-1600000000@g.us 0",
 		"conversation 12345-1600000000@g.us Climbing Crew",
 		"organized 12345-1600000000@g.us false true",
+		"timer 12345-1600000000@g.us 0",
 		"history 12345-1600000000@g.us H2",
 		"unread 12345-1600000000@g.us 0",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events =\n%q\nwant\n%q", got, want)
-	}
-}
-
-// groupJIDForNaming is the group resolveGroupName's tests resolve a
-// name and member count for, directly, without going through a full
-// history sync event.
-var groupJIDForNaming = types.NewJID("12345-1600000000", types.GroupServer)
-
-func TestResolveGroupName(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		dev           *fakeDevice
-		syncedTitle   string
-		syncedMembers int
-		wantName      string
-		wantMembers   int
-		wantCalls     int
-	}{
-		{
-			"resolves an unknown group's name and members together",
-			&fakeDevice{groupNames: map[string]string{groupJIDForNaming.String(): "Climbing Crew"}, groupMembers: map[string]int{groupJIDForNaming.String(): 12}},
-			"", 0, "Climbing Crew", 12, 1,
-		},
-		{
-			"falls back to a generic name when it cannot be resolved",
-			&fakeDevice{groupErr: errors.New("unavailable")},
-			"", 0, "Group", 0, 1,
-		},
-		{
-			"keeps the sync's own member count without asking WhatsApp",
-			&fakeDevice{},
-			"Climbing Crew", 2, "Climbing Crew", 2, 0,
-		},
-		{
-			// Scripted differently from the synced title, to prove the
-			// fetched name is never used once a name is already known:
-			// only its member count matters here, since the sync, as
-			// WhatsApp's own history sync often does, named the group
-			// but carried no participant list for it at all.
-			"resolves member count even when the sync already named the group",
-			&fakeDevice{groupNames: map[string]string{groupJIDForNaming.String(): "should never be used"}, groupMembers: map[string]int{groupJIDForNaming.String(): 3}},
-			"Tim and Laura", 0, "Tim and Laura", 3, 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			c := New(domain.Account{ID: "wa"}, t.TempDir())
-			name, members := c.resolveGroupName(t.Context(), tt.dev, groupJIDForNaming, tt.syncedTitle, tt.syncedMembers)
-
-			if name != tt.wantName || members != tt.wantMembers {
-				t.Errorf("resolveGroupName = (%q, %d), want (%q, %d)", name, members, tt.wantName, tt.wantMembers)
-			}
-			if len(tt.dev.groupCalls) != tt.wantCalls {
-				t.Errorf("group info requested %d times, want %d", len(tt.dev.groupCalls), tt.wantCalls)
-			}
-		})
-	}
-}
-
-func TestResolveGroupName_CachesAfterItsFirstResolve(t *testing.T) {
-	t.Parallel()
-
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := &fakeDevice{groupNames: map[string]string{groupJIDForNaming.String(): "Climbing Crew"}}
-
-	c.resolveGroupName(t.Context(), dev, groupJIDForNaming, "", 0)
-	c.resolveGroupName(t.Context(), dev, groupJIDForNaming, "", 0)
-
-	if len(dev.groupCalls) != 1 {
-		t.Errorf("group info requested %d times across two resolves, want 1 (cached after the first)", len(dev.groupCalls))
 	}
 }
 
@@ -537,5 +467,24 @@ func TestHandleHistorySync_DropsASyncedMessageThatReusesAnotherSendersID(t *test
 	history := sink.Messages()["15551234567@s.whatsapp.net"]
 	if len(history) != 1 || history[0].Text != "hi" {
 		t.Errorf("history messages = %+v, want only the first message, nothing from the id reused with a different identity", history)
+	}
+}
+
+// TestHandleHistorySync_ReportsANonZeroDisappearingTimer checks that a
+// synced conversation's own ephemeral expiration is reported through
+// the sink, the way TestHandleHistorySync_ReportsContactsConversationsAndMessages
+// already checks the all-zero case inline.
+func TestHandleHistorySync_ReportsANonZeroDisappearingTimer(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	conv := &waHistorySync.Conversation{
+		ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), EphemeralExpiration: u32(86400),
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	if !sink.Has("timer 15551234567@s.whatsapp.net 86400") {
+		t.Errorf("events = %q, want the synced disappearing timer reported", sink.Lines())
 	}
 }

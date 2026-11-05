@@ -47,6 +47,14 @@ func isEdit(msg *waE2E.Message) bool {
 	return pm != nil && pm.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT
 }
 
+// isEphemeralSetting reports whether msg announces a chat's
+// disappearing-message timer changing, rather than being content of
+// its own.
+func isEphemeralSetting(msg *waE2E.Message) bool {
+	pm := msg.GetProtocolMessage()
+	return pm != nil && pm.GetType() == waE2E.ProtocolMessage_EPHEMERAL_SETTING
+}
+
 // edit turns a message-edit protocol message into the message it
 // replaces, with its new text, media and reply: WhatsApp resends the
 // whole message rather than a diff, so Sink.Edited's "replace

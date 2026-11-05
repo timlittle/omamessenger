@@ -78,10 +78,11 @@ func (in *Ingest) Run(ctx context.Context) {
 }
 
 var (
-	_ connector.Sink             = (*Ingest)(nil)
-	_ connector.SenderNamer      = (*Ingest)(nil)
-	_ connector.PollUpdater      = (*Ingest)(nil)
-	_ connector.RemoteIDUpgrader = (*Ingest)(nil)
+	_ connector.Sink                      = (*Ingest)(nil)
+	_ connector.SenderNamer               = (*Ingest)(nil)
+	_ connector.PollUpdater               = (*Ingest)(nil)
+	_ connector.RemoteIDUpgrader          = (*Ingest)(nil)
+	_ connector.DisappearingTimerReporter = (*Ingest)(nil)
 )
 
 // AccountStatus records and publishes an account's connection state. A
@@ -332,6 +333,25 @@ func (in *Ingest) Organized(ctx context.Context, accountID, conversationRemoteID
 	}
 
 	changed, err := in.store.SetOrganized(ctx, conv.ID, pinned, archived)
+	if err != nil || !changed {
+		return
+	}
+
+	if _, err := in.events.publishConversation(ctx, conv.ID); err != nil {
+		return
+	}
+}
+
+// DisappearingTimer records a chat's disappearing-message period,
+// publishing it only when it changed, so a later Send can read it off
+// the stored conversation.
+func (in *Ingest) DisappearingTimer(ctx context.Context, accountID, conversationRemoteID string, seconds int64) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	changed, err := in.store.SetDisappearingTimer(ctx, conv.ID, seconds)
 	if err != nil || !changed {
 		return
 	}

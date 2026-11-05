@@ -360,3 +360,16 @@ type PollUpdater interface {
 	// account and conversationRemoteID.
 	PollUpdated(ctx context.Context, accountID, conversationRemoteID, messageRemoteID string, poll domain.Poll)
 }
+
+// DisappearingTimerReporter is a Sink that can also report a chat's
+// disappearing-message period changing: the ephemeral setting a
+// service reports for the whole chat, separately from any one
+// message's own expiry. Optional, like PollUpdater: a connector that
+// learns a chat's timer type-asserts the Sink it was given for this,
+// and skips the report when it is not implemented, such as by a test
+// fake.
+type DisappearingTimerReporter interface {
+	// DisappearingTimer reports conversationRemoteID's disappearing-
+	// message period, in seconds, within account. It never notifies.
+	DisappearingTimer(ctx context.Context, accountID, conversationRemoteID string, seconds int64)
+}

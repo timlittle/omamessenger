@@ -184,6 +184,11 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string, opts S
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
 		ID: id, ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
 		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo, Mentions: opts.Mentions,
+		// A chat's own disappearing timer applies to every message sent
+		// into it, counted from now like any other outgoing message
+		// (see domain.Message.ArmOnRead): the service applies it on its
+		// own end too, so the local copy must vanish on the same schedule.
+		ExpireAfter: conv.DisappearingTimer,
 	})
 	if err != nil {
 		return domain.Message{}, err

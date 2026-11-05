@@ -31,6 +31,8 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 		c.handleEdit(ctx, sink, dev, media, e)
 	case e.Message.GetPollUpdateMessage() != nil:
 		c.handlePollVote(ctx, sink, dev, media, e)
+	case isEphemeralSetting(e.Message):
+		c.handleEphemeralSetting(ctx, sink, dev, media, e)
 	case isContentless(e.Message):
 		// WhatsApp's own protocol and system notices carry nothing a
 		// person sent; see isContentless. Nothing is reported for one.
@@ -132,7 +134,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 	}
 
 	if kindFor(info.Chat) == domain.KindGroup {
-		name, members := c.resolveGroupName(ctx, dev, info.Chat, "", 0)
+		name, members := c.resolveGroupName(ctx, syncSource{dev: dev, media: media, sink: sink}, info.Chat, "", 0)
 		c.reportConversation(ctx, sink, domain.Conversation{
 			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, Members: members,
 		})
@@ -202,6 +204,29 @@ func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev dev
 
 	m := c.improvedSenderName(edit(ctx, dev, e.Info, e.Message))
 	sink.Edited(ctx, c.account.ID, remote, m)
+}
+
+// handleEphemeralSetting reports a chat's disappearing-message timer
+// changing live, read-only: it never calls ensureChat, since an
+// ephemeral setting about a chat this run has not seen yet is not a
+// real scenario for a signed-in account's own history, and chatID's
+// lookup for an unknown chat simply resolves to nothing useful.
+func (c *Connector) handleEphemeralSetting(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
+	pm := e.Message.GetProtocolMessage()
+	remote := chatID(ctx, dev, media, e.Info.Chat)
+	c.reportDisappearingTimer(ctx, sink, remote, int64(pm.GetEphemeralExpiration()))
+}
+
+// reportDisappearingTimer reports a chat's disappearing-message period,
+// dropping the report when the sink given to this run does not keep
+// it (see connector.DisappearingTimerReporter).
+func (c *Connector) reportDisappearingTimer(ctx context.Context, sink connector.Sink, remote string, seconds int64) {
+	reporter, ok := sink.(connector.DisappearingTimerReporter)
+	if !ok {
+		return
+	}
+
+	reporter.DisappearingTimer(ctx, c.account.ID, remote, seconds)
 }
 
 // handleChatPresence reports someone typing or stopping, naming them

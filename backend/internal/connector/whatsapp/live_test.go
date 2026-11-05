@@ -279,11 +279,31 @@ func TestHandleMessage_SkipsAProtocolNoticeWithNoContent(t *testing.T) {
 	c, dev, sink, media := handlerMediaFixture(t)
 
 	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
-		Info: liveInfo(), Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
+		Info: liveInfo(), Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE.Enum()}},
 	})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want a protocol notice with no content to report nothing at all", sink.Lines())
+	}
+}
+
+// TestHandleMessage_ReportsADisappearingTimerChange checks that an
+// EPHEMERAL_SETTING protocol message, which WhatsApp sends live
+// whenever a chat's own disappearing timer changes, is reported
+// through the sink rather than silently dropped as housekeeping.
+func TestHandleMessage_ReportsADisappearingTimerChange(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: liveInfo(), Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{
+			Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum(), EphemeralExpiration: u32(604800),
+		}},
+	})
+
+	if !sink.Has("timer 15551234567@s.whatsapp.net 604800") {
+		t.Errorf("events = %q, want the chat's new disappearing timer reported", sink.Lines())
 	}
 }
 

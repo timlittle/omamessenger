@@ -65,6 +65,7 @@ type fakeDevice struct {
 	// name and member count.
 	groupNames   map[string]string
 	groupMembers map[string]int
+	groupTimers  map[string]int64
 	groupErr     error
 	groupCalls   []types.JID
 
@@ -409,17 +410,17 @@ func (d *fakeDevice) fireEvent(evt any) {
 }
 
 // groupInfo records the call and reports the scripted name, member
-// count or error.
-func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, error) {
+// count, disappearing timer or error.
+func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, int64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	d.groupCalls = append(d.groupCalls, jid)
 	if d.groupErr != nil {
-		return "", 0, d.groupErr
+		return "", 0, 0, d.groupErr
 	}
 
-	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
+	return d.groupNames[jid.String()], d.groupMembers[jid.String()], d.groupTimers[jid.String()], nil
 }
 
 // groupParticipants reports the scripted participants or error.

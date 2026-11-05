@@ -121,7 +121,7 @@ func TestOutgoingMessage_CarriesMentions(t *testing.T) {
 	alice := types.NewJID("15550001111", types.DefaultUserServer)
 	m := domain.Message{Text: "hi @Alice", Mentions: []domain.Mention{{UserID: remoteID(alice), Name: "Alice", Offset: 3, Length: 6}}}
 
-	got := outgoingMessage(t.Context(), nil, "", types.NewJID("group", types.GroupServer), m)
+	got := outgoingMessage(t.Context(), sendTarget{chat: types.NewJID("group", types.GroupServer)}, m)
 	ext := got.GetExtendedTextMessage()
 	if ext == nil {
 		t.Fatalf("message = %+v, want an ExtendedTextMessage", got)
@@ -137,7 +137,7 @@ func TestOutgoingMessage_CarriesMentions(t *testing.T) {
 func TestOutgoingMessage_PlainTextWithNoMentions(t *testing.T) {
 	t.Parallel()
 
-	got := outgoingMessage(t.Context(), nil, "", types.NewJID("", types.DefaultUserServer), domain.Message{Text: "hi"})
+	got := outgoingMessage(t.Context(), sendTarget{chat: types.NewJID("", types.DefaultUserServer)}, domain.Message{Text: "hi"})
 	if got.GetConversation() != "hi" {
 		t.Errorf("message = %+v, want a plain Conversation", got)
 	}

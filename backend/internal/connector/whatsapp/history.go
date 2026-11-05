@@ -17,21 +17,19 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// groupNameTimeout bounds asking WhatsApp for a group's name, so one
-// unreachable group can never hold up the rest of a sync.
-const groupNameTimeout = 5 * time.Second
-
 // syncSource bundles what every step of a history sync needs besides
-// the sink and the data being synced: the device to resolve names and
-// fetch group info from, and the media store to remember attachment
-// references in. Bundling the two keeps syncConversation within this
-// codebase's argument-count limit.
+// the data being synced: the device to resolve names and fetch group
+// info from, the media store to remember attachment references in,
+// and the sink to report what a fetch resolves, such as a group's
+// current disappearing timer (see resolveGroupName). Bundling these
+// keeps syncConversation and resolveGroupName within this codebase's
+// argument-count limit.
 type syncSource struct {
 	dev   device
 	media *mediaStore
+	sink  connector.Sink
 }
 
 // syncTarget bundles syncSource with the one conversation syncMessage
@@ -56,7 +54,7 @@ type syncTarget struct {
 // how many of them were actually reported.
 func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.HistorySync) {
 	data := e.Data
-	src := syncSource{dev: dev, media: media}
+	src := syncSource{dev: dev, media: media, sink: sink}
 	onDemand := data.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND
 
 	c.syncPushnames(ctx, sink, dev, data.GetPushnames())
@@ -120,6 +118,10 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	conv.Title, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
 	c.reportSyncedOrganize(ctx, sink, src.dev, jid, conv.RemoteID)
+	// A full history sync is authoritative for a chat's current
+	// disappearing timer, unlike an ordinary message report, so this
+	// always reports whatever the sync carries, including 0 for none.
+	c.reportDisappearingTimer(ctx, sink, conv.RemoteID, int64(sc.GetEphemeralExpiration()))
 
 	target := syncTarget{syncSource: src, chat: jid, convRemoteID: conv.RemoteID}
 	reported := 0
@@ -206,139 +208,4 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
 
 	return true
-}
-
-// resolveConversation is conv's best title and, for a group, its
-// member count: the self-chat label, the sync's own name and
-// participants, a fetched group name, a direct chat's known contact
-// or push name, or a fallback title. Never returns "", since an
-// untitled conversation would be dropped rather than shown.
-func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, members int) {
-	if src.dev.isSelfChat(ctx, jid) {
-		return selfChatTitle, 0
-	}
-
-	if conv.Kind == domain.KindGroup {
-		return c.resolveGroupName(ctx, src.dev, jid, conv.Title, conv.Members)
-	}
-
-	if conv.Title != "" {
-		name, _ := c.rememberName(conv.RemoteID, conv.Title, nameRankContact)
-		return name, 0
-	}
-
-	return c.resolveDirectTitle(ctx, src, jid, syncedPushName(sc), syncedBusinessName(sc)), 0
-}
-
-// syncedPushName is the push name carried by whichever of sc's own
-// synced messages first has one from someone other than this account,
-// or "" when none does. An outgoing message's own PushName field
-// describes this account, never the chat partner (see ensureChat's
-// own rule in live.go), so one is skipped here too.
-func syncedPushName(sc *waHistorySync.Conversation) string {
-	for _, hm := range sc.GetMessages() {
-		raw := hm.GetMessage()
-		if raw.GetKey().GetFromMe() {
-			continue
-		}
-
-		if name := raw.GetPushName(); name != "" {
-			return name
-		}
-	}
-
-	return ""
-}
-
-// resolveDirectTitle is a direct chat's best title: its contact's
-// resolved name (see device.contactName), the name already cached for
-// its canonical chat id, the business or push name this report
-// carries, or a fallback built from its phone JID. Resolving by the
-// chat's canonical id, rather than whichever address form this report
-// uses, keeps a name learned under one address valid under another,
-// and stops a weaker fallback from overwriting a better cached name
-// (see rememberName).
-func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) string {
-	remote := chatID(ctx, src.dev, src.media, jid)
-
-	if name, fromContact := src.dev.contactName(ctx, jid); name != "" {
-		resolved, _ := c.rememberName(remote, name, rankFor(fromContact))
-		return resolved
-	}
-
-	if name, _ := c.nameFor(remote); name != "" {
-		return name
-	}
-
-	if businessName != "" {
-		resolved, _ := c.rememberName(remote, businessName, nameRankBusiness)
-		return resolved
-	}
-
-	if pushName != "" {
-		resolved, _ := c.rememberName(remote, pushName, nameRankPushName)
-		return resolved
-	}
-
-	return titleFallback(phoneFormOf(ctx, src.dev, jid))
-}
-
-// resolveGroupName is a group's current name and member count: whichever
-// the sync itself carried or this connector's own cache already holds,
-// or, failing either one, a single bounded request to WhatsApp that
-// resolves both together, cached so a later sync or message for the
-// same group never asks again. A name already known never needs that
-// request on its own, but an unknown member count still does, even
-// when the name came from the sync: a synced conversation often
-// carries a group's display name with no participant list at all, and
-// without this a group titled straight from history sync would be
-// stuck showing no members until something else happened to ask.
-// Resolving falls back to a generic label rather than ever leaving a
-// group untitled.
-func (c *Connector) resolveGroupName(ctx context.Context, dev device, jid types.JID, syncedTitle string, syncedMembers int) (string, int) {
-	remote := remoteID(jid)
-	members, membersKnown := c.cachedGroupMembers(remote, syncedMembers)
-
-	name := syncedTitle
-	if name == "" {
-		name, _ = c.nameFor(remote)
-	}
-	if name != "" && membersKnown {
-		resolved, _ := c.rememberName(remote, name, nameRankContact)
-		return resolved, members
-	}
-
-	lookupCtx, cancel := context.WithTimeout(ctx, groupNameTimeout)
-	defer cancel()
-
-	fetchedName, fetchedMembers, err := dev.groupInfo(lookupCtx, jid)
-	if err == nil && !membersKnown {
-		members = fetchedMembers
-		c.setGroupMembers(remote, members)
-	}
-	if name == "" && err == nil {
-		name = fetchedName
-	}
-	if name == "" {
-		return "Group", members
-	}
-
-	resolved, _ := c.rememberName(remote, name, nameRankContact)
-	return resolved, members
-}
-
-// cachedGroupMembers is a group's member count from the sync itself, or
-// this connector's own cache, and whether either source actually knows
-// it yet: a group always has at least one other member, so a cached 0
-// only ever means "WhatsApp was asked and said so", never "never
-// asked".
-func (c *Connector) cachedGroupMembers(remote string, syncedMembers int) (members int, known bool) {
-	if syncedMembers > 0 {
-		c.setGroupMembers(remote, syncedMembers)
-		return syncedMembers, true
-	}
-
-	cached, ok := c.groupMembersFor(remote)
-
-	return cached, ok
 }

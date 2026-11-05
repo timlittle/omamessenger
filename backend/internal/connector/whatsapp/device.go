@@ -78,9 +78,10 @@ type device interface {
 	// add their own cases without widening this interface again.
 	onEvent(handler func(evt any)) (unregister func())
 
-	// groupInfo is a group's current name and member count, for a
-	// history sync or a live message whose own data left either blank.
-	groupInfo(ctx context.Context, jid types.JID) (name string, members int, err error)
+	// groupInfo is a group's current name, member count and
+	// disappearing-message timer, for a history sync or a live message
+	// whose own data left either blank.
+	groupInfo(ctx context.Context, jid types.JID) (name string, members int, disappearingTimer int64, err error)
 
 	// groupParticipants is a group's current participants, for the
 	// @-mention picker.
@@ -306,14 +307,15 @@ func (d *waDevice) onEvent(handler func(evt any)) (unregister func()) {
 	return func() { d.cli.RemoveEventHandler(id) }
 }
 
-// groupInfo asks WhatsApp for a group's current name and member count.
-func (d *waDevice) groupInfo(ctx context.Context, jid types.JID) (string, int, error) {
+// groupInfo asks WhatsApp for a group's current name, member count and
+// disappearing-message timer.
+func (d *waDevice) groupInfo(ctx context.Context, jid types.JID) (string, int, int64, error) {
 	info, err := d.cli.GetGroupInfo(ctx, jid)
 	if err != nil {
-		return "", 0, fmt.Errorf("whatsapp: group info: %w", err)
+		return "", 0, 0, fmt.Errorf("whatsapp: group info: %w", err)
 	}
 
-	return info.Name, info.ParticipantCount, nil
+	return info.Name, info.ParticipantCount, int64(info.DisappearingTimer), nil
 }
 
 // groupParticipants asks WhatsApp for a group's current participants.

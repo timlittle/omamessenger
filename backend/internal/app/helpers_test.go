@@ -57,6 +57,15 @@ type fixture struct {
 	transcodeRoot   string
 }
 
+// freshFixture returns a new fixture and a context, the pair almost
+// every ingest and message test starts from, saving each test the same
+// two lines.
+func freshFixture(t *testing.T) (*fixture, context.Context) {
+	t.Helper()
+
+	return newFixture(t, false), t.Context()
+}
+
 // newFixture builds an application with one WhatsApp account "wa". With
 // faked set, it has fake connectors that can inject messages.
 func newFixture(t *testing.T, faked bool) *fixture {
