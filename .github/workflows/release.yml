@@ -5,14 +5,13 @@ name: Release helper
 # the plugin installs the binary pinned in helper-version with
 # scripts/install-helper.sh, which verifies it against the SHA-256
 # committed in helper-checksums (see docs/decisions.md for why a committed
-# hash, not the release's own SHA256SUMS, is the authority, and for why a
-# release binary ships AGPL-3.0 text). cgo and libsignal_ffi.a cannot
-# cross-compile, so each architecture builds natively on its own runner
-# (the build job's matrix); the gather job then combines both binaries
-# into one SHA256SUMS and publishes them together. Once the release's
-# assets exist, the pin-checksums job below computes their SHA-256 and
-# opens a pull request to commit them, rather than pushing straight to
-# main, so the pin a reviewer sees land through is a normal diff.
+# hash, not the release's own SHA256SUMS, is the authority). cgo cannot
+# cross-compile libsignal_ffi.a, so the build job is a per-architecture
+# matrix and the gather job combines both binaries into one SHA256SUMS.
+# Once the release's assets exist, the pin-checksums job below computes
+# their SHA-256 and opens a pull request to commit them, rather than
+# pushing straight to main, so the pin a reviewer sees land through is a
+# normal diff.
 #
 # Runs on a direct "v*" tag push (a manual release) and, called by
 # release-please.yml right after it tags a release itself, on workflow_call
@@ -39,7 +38,7 @@ on:
 # token grant is zero.
 permissions: {}
 
-# Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile (see ci.yml).
+# Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile.
 env:
   LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
 
@@ -54,9 +53,7 @@ jobs:
     permissions:
       contents: read
 
-  # One job per architecture: cgo linking libsignal_ffi.a cannot
-  # cross-compile, so each runner builds and uploads only its own binary;
-  # the gather job below combines them.
+  # One job per architecture; the gather job below combines them.
   build:
     needs: ci
     strategy:
@@ -67,7 +64,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 12
+    timeout-minutes: 25
     permissions:
       contents: read
     env:
@@ -95,13 +92,10 @@ jobs:
           cache: false
 
       - name: Libsignal build tools
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
 
-      # No actions/cache here: a release publishes trusted artifacts, and
-      # zizmor flags caching a runtime build input in a workflow whose
-      # later jobs have contents: write as a cache-poisoning surface
-      # (ci.yml's own jobs, read-only throughout, cache it safely). A
-      # release builds libsignal fully, which is rare enough to afford.
+      # No actions/cache here: zizmor flags caching a build input in a
+      # workflow with a later contents: write job as cache poisoning.
       - name: Build this architecture's helper, SHA256SUMS and license notices
         run: make build-all
 
@@ -112,10 +106,8 @@ jobs:
           path: build/release
           retention-days: 1
 
-  # Combines both architectures' binaries into one SHA256SUMS (each one
-  # is otherwise identical, so there is only one LICENSE-AGPL-3.0 and one
-  # THIRD_PARTY_NOTICES to keep), attests build provenance for both, and
-  # publishes the release.
+  # Combines both architectures' binaries into one SHA256SUMS, attests
+  # provenance for both, and publishes the release.
   gather:
     needs: build
     runs-on: ubuntu-24.04

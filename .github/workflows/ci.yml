@@ -20,9 +20,7 @@ concurrency:
 # token grant is zero.
 permissions: {}
 
-# Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile: the full
-# commit signalmeow's own pkg/libsignalgo/signalversion names, never a
-# tag (see the Makefile for how it was resolved and verified).
+# Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile.
 env:
   LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
 
@@ -34,7 +32,7 @@ jobs:
   # to compile.
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -45,7 +43,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Libsignal build tools
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/libsignal
@@ -56,7 +54,7 @@ jobs:
   test:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -70,7 +68,7 @@ jobs:
         with:
           node-version: "22"
       - name: Libsignal build tools
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/libsignal
@@ -84,7 +82,7 @@ jobs:
   checks:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -95,7 +93,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Libsignal build tools
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/libsignal
@@ -117,17 +115,15 @@ jobs:
           command -v shellcheck >/dev/null || { $(command -v sudo) apt-get update -q && $(command -v sudo) apt-get install -yq shellcheck; }
           shellcheck -x scripts/*.sh bin/oma-messenger-service hooks/commit-msg
 
-  # Runs only once everything else has passed. A two-runner matrix, one
-  # per architecture: cgo linking libsignal_ffi.a cannot cross-compile,
-  # so this is the one place arm64 is actually built before merge (the
-  # release workflow's own matrix is this job's architectures again).
+  # Runs only once everything else has passed. Two-runner matrix: cgo
+  # cannot cross-compile libsignal_ffi.a, so arm64 is built natively here.
   release-build:
     needs: [test, checks, qml]
     strategy:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 12
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -138,7 +134,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Libsignal build tools
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: build/libsignal
@@ -152,7 +148,7 @@ jobs:
   qml:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     container: archlinux:base-devel
     permissions:
       contents: read

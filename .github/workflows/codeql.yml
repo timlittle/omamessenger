@@ -15,8 +15,8 @@ on:
 # token grant is zero.
 permissions: {}
 
-# Kept in sync by hand with the Makefile's own LIBSIGNAL_COMMIT and
-# LIBSIGNAL_VERSION (see ci.yml).
+# Kept in sync by hand with the Makefile's LIBSIGNAL_COMMIT and
+# LIBSIGNAL_VERSION.
 env:
   LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
   LIBSIGNAL_VERSION: v0.105.0
@@ -25,7 +25,7 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       security-events: write # upload the SARIF to code scanning
       contents: read          # checkout
@@ -50,7 +50,7 @@ jobs:
 
       - name: Libsignal build tools
         if: matrix.language == 'go'
-        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+        run: ./scripts/install-libsignal-build-tools.sh
 
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         if: matrix.language == 'go'
@@ -64,11 +64,7 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
 
       - name: Build the Go module
-        # Building it the same way the Makefile does (cgo on, linked
-        # against the libsignal built just above) keeps this build
-        # identical to what CI and releases ship and scans the Signal
-        # connector too, rather than relying on autobuild's own
-        # heuristics or skipping cgo code.
+        # cgo on, so the Signal connector is scanned too.
         if: matrix.language == 'go'
         run: |
           make libsignal

@@ -30,9 +30,7 @@ import (
 )
 
 // providers lists every messaging service this helper can add an account
-// for. Adding a service means adding its Provider here. signalProviders
-// comes from signal_cgo.go or signal_nocgo.go, depending on whether this
-// build links libsignal.
+// for. signalProviders comes from signal_cgo.go or signal_nocgo.go.
 func providers() []connector.Provider {
 	p := []connector.Provider{telegram.Provider{Version: helperVersion}, whatsapp.Provider{}}
 	return append(p, signalProviders()...)

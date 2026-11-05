@@ -43,32 +43,21 @@ ZIZMOR := $(TOOLS)/zizmor
 FAKE_HELPER := build/fake/oma-messenger-service
 THIRD_PARTY_NOTICES := build/THIRD_PARTY_NOTICES
 
-# Licenses the helper's dependencies may use. go.mau.fi/libsignal (GPL-3.0,
-# pulled in by WhatsApp support) and go.mau.fi/mautrix-signal (AGPL-3.0,
-# Signal support) are why release binaries are AGPL-3.0 even though this
-# repository's own source stays MIT; see docs/decisions.md.
+# go.mau.fi/mautrix-signal (AGPL-3.0, Signal support) is why release
+# binaries are AGPL-3.0; see docs/decisions.md.
 ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0,AGPL-3.0
 
-# libsignal-ffi, pinned to the full commit signalmeow's own
-# pkg/libsignalgo/signalversion names (go.mau.fi/mautrix-signal v26.10,
-# libsignal v0.105.0: git ls-remote --tags https://github.com/signalapp/libsignal
-# v0.105.0 resolves the annotated tag to this commit). A tag alone is a
-# marketplace finding (remote-git-execution-unpinned), so this is the
-# commit itself, verified by scripts/libsignal.sh after checkout.
+# libsignal-ffi, pinned to the full commit signalmeow's signalversion
+# names, never a tag (see docs/decisions.md).
 LIBSIGNAL_VERSION := v0.105.0
 LIBSIGNAL_COMMIT := 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
 LIBSIGNAL_ARCH := $(shell $(GO) env GOARCH)
 LIBSIGNAL_DIR := build/libsignal/$(LIBSIGNAL_VERSION)/$(LIBSIGNAL_ARCH)
 LIBSIGNAL_ARCHIVE := $(LIBSIGNAL_DIR)/libsignal_ffi.a
-# The Rust build peaks around 3.5 GB; cap how many codegen units cargo
-# runs at once rather than letting it use every core, and keep its own
-# scratch under build/ for the same reason GOTMPDIR is (see resources.md).
+# Caps cargo's peak memory; see .claude/rules/resources.md.
 CARGO_BUILD_JOBS ?= 2
 CARGO_TARGET_DIR := $(CURDIR)/build/cargo-target
 
-# cgo is on by default once a C compiler is found, so a plain go build
-# would already try to link libsignal_ffi.a; make that explicit and point
-# the linker at the architecture this checkout just built.
 export CGO_ENABLED := 1
 export CGO_LDFLAGS := -L$(CURDIR)/$(LIBSIGNAL_DIR)
 
@@ -102,21 +91,18 @@ build-fake: ## Build the test helper, which runs scripted fake accounts, into bu
 build-all: third-party-notices libsignal ## Build this machine's release helper, SHA256SUMS and license notices into build/release/
 	./scripts/build-release.sh
 
-# Skips the build once $(LIBSIGNAL_ARCHIVE) already exists, so a repeat
-# `make check` only fetches and builds libsignal-ffi once per checkout.
+# Skips the build once $(LIBSIGNAL_ARCHIVE) already exists.
 libsignal: $(LIBSIGNAL_ARCHIVE) ## Fetch and build libsignal-ffi, pinned to the commit signalmeow expects
 
 $(LIBSIGNAL_ARCHIVE):
 	./scripts/libsignal.sh "$(LIBSIGNAL_COMMIT)" "$(LIBSIGNAL_VERSION)" "$(LIBSIGNAL_ARCH)" "$(LIBSIGNAL_DIR)" "$(CARGO_TARGET_DIR)" "$(CARGO_BUILD_JOBS)"
 
-# Builds this host's own architecture only: cgo linking libsignal_ffi.a
-# cannot cross-compile, unlike the old CGO_ENABLED=0 build (see
-# scripts/build-release.sh). Too slow for `make check`; run it by hand
-# before a release, or in CI once per release-build runner. It installs
-# into a throwaway HOME, never the real one, and cleans up after itself.
-# It checks install-helper.sh's own mechanics (the atomic move, the no-op
-# re-run, the desktop entry) and that the binary links nothing beyond the
-# system libraries release-check.sh's allowlist expects, not that this
+# Builds this host's own architecture only: cgo cannot cross-compile
+# libsignal_ffi.a. Too slow for `make check`; run it by hand before a
+# release, or in CI once per release-build runner. It installs into a
+# throwaway HOME, never the real one, and cleans up after itself. It
+# checks install-helper.sh's own mechanics (the atomic move, the no-op
+# re-run, the desktop entry) and the ldd allowlist, not that this
 # machine's toolchain reproduces the exact bytes GitHub's release build
 # published, so it pins a throwaway helper-checksums computed from this
 # run's own build/release/SHA256SUMS rather than reading the repository's

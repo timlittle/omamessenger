@@ -1,9 +1,6 @@
 #!/usr/bin/env sh
-# Fail if the release helper's dynamic links go beyond what a stock glibc
-# system is expected to carry. `make release-check` calls this right
-# after a fresh build-all, so a dependency that needs a library the
-# release runners did not ship for cannot slip into a release unnoticed
-# (see docs/decisions.md for why each release runner builds natively).
+# Fail if the release helper links beyond a stock glibc allowlist.
+# `make release-check` calls this after build-all.
 #
 # Usage: release-check-ldd.sh <binary>
 set -eu

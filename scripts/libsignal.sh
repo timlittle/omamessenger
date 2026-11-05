@@ -1,17 +1,11 @@
 #!/usr/bin/env sh
-# Fetch and build libsignal-ffi, the Rust library the Signal connector's
-# cgo bindings link against, at the exact commit signalmeow pins.
-# `make libsignal` calls this; it is a prerequisite of every Go target
-# that needs cgo to link.
+# Fetch and build libsignal-ffi at the pinned commit. `make libsignal`
+# calls this.
 #
 # Usage: libsignal.sh <commit> <version> <arch> <out-dir> <cargo-target-dir> <jobs>
 #
-# <commit> is checked out detached and verified, never trusted from a tag:
-# a moved or re-pushed tag must never silently swap in different source.
-# The build is skipped when <out-dir>/libsignal_ffi.a already exists, so a
-# repeat `make check` does not rebuild it. rustup picks up the toolchain
-# libsignal's own rust-toolchain file names; cmake, protoc and clang build
-# its native dependencies (see CONTRIBUTING.md).
+# The commit is checked out detached and verified, never trusted from a
+# tag. Skips the build when <out-dir>/libsignal_ffi.a already exists.
 set -eu
 
 commit=$1
