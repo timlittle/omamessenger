@@ -147,6 +147,13 @@ type Conversation struct {
 	// RetryAttempts and RetrySince, so it never crosses the protocol.
 	ReminderNotifiedAt int64 `json:"-"`
 
+	// DisappearingTimer is the chat-wide disappearing-message period a
+	// connector last reported, in seconds, or 0 for none. It never
+	// crosses the protocol: Commands.Send reads it to arm a new
+	// outgoing message's own ExpireAfter (see domain.Message), the same
+	// period every message in the chat already disappears after.
+	DisappearingTimer int64 `json:"-"`
+
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
 

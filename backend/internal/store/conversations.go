@@ -15,7 +15,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound,c.disappearing_timer`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -234,6 +234,29 @@ func (s *Store) SetUnread(ctx context.Context, id string, count int) (changed bo
 	return false, err
 }
 
+// SetDisappearingTimer records a chat's disappearing-message period, in
+// seconds, as a connector reports it changing. changed is false when it
+// already had that period. Unlike the general fields EnsureConversation
+// refreshes, this is never touched by an ordinary conversation report
+// that does not know the current setting: only this method ever
+// changes it.
+func (s *Store) SetDisappearingTimer(ctx context.Context, id string, seconds int64) (changed bool, _ error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET disappearing_timer=? WHERE id=? AND disappearing_timer<>?`, seconds, id, seconds)
+	if err != nil {
+		return false, wrap("set disappearing timer", err)
+	}
+
+	changed, err = rowsChanged("set disappearing timer", res)
+	if changed || err != nil {
+		return changed, err
+	}
+
+	// No row changed: either it already had that period or it does not exist.
+	_, err = s.Conversation(ctx, id)
+
+	return false, err
+}
+
 // SetMuted mutes or unmutes a conversation.
 func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET muted=? WHERE id=?`, boolInt(muted), id)
@@ -374,72 +397,6 @@ func (s *Store) UnreadByService(ctx context.Context) (map[string]int, error) {
 	return byService, wrap("unread by service", rows.Err())
 }
 
-// UpgradeConversationRemoteID changes a conversation's remote id in place,
-// keeping its local id, messages and settings, for a connector that
-// resolves a better id for one already stored under an older one. If a
-// conversation already exists under newRemoteID, the two are merged
-// instead. It reports domain.ErrNotFound when no conversation has
-// oldRemoteID.
-func (s *Store) UpgradeConversationRemoteID(ctx context.Context, accountID, oldRemoteID, newRemoteID string) (domain.Conversation, error) {
-	if oldRemoteID == newRemoteID {
-		return s.ConversationByRemote(ctx, accountID, oldRemoteID)
-	}
-
-	old, err := s.ConversationByRemote(ctx, accountID, oldRemoteID)
-	if err != nil {
-		return domain.Conversation{}, err
-	}
-
-	target, err := s.ConversationByRemote(ctx, accountID, newRemoteID)
-	if errors.Is(err, domain.ErrNotFound) {
-		return s.renameConversationRemoteID(ctx, old.ID, newRemoteID)
-	}
-	if err != nil {
-		return domain.Conversation{}, err
-	}
-
-	return s.mergeConversations(ctx, old.ID, target.ID)
-}
-
-// renameConversationRemoteID points a conversation at a new remote id,
-// for UpgradeConversationRemoteID's simple case: nothing is stored
-// under the new id yet.
-func (s *Store) renameConversationRemoteID(ctx context.Context, id, remoteID string) (domain.Conversation, error) {
-	if _, err := s.db.ExecContext(ctx, `UPDATE conversations SET remote_id=? WHERE id=?`, remoteID, id); err != nil {
-		return domain.Conversation{}, wrap("rename conversation remote id", err)
-	}
-
-	return s.Conversation(ctx, id)
-}
-
-// mergeConversations moves fromID's messages into intoID and removes fromID.
-// A message under a remote id intoID already has is left behind and
-// discarded, since moving it would violate the unique index.
-func (s *Store) mergeConversations(ctx context.Context, fromID, intoID string) (domain.Conversation, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.Conversation{}, wrap("merge conversations", err)
-	}
-	// Rollback after a successful Commit is a no-op that returns
-	// sql.ErrTxDone, so its error carries no information.
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE OR IGNORE messages SET conversation_id=? WHERE conversation_id=?`, intoID, fromID); err != nil {
-		return domain.Conversation{}, wrap("merge conversations", err)
-	}
-
-	if _, err := tx.ExecContext(ctx, `DELETE FROM conversations WHERE id=?`, fromID); err != nil {
-		return domain.Conversation{}, wrap("merge conversations", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return domain.Conversation{}, wrap("merge conversations", err)
-	}
-
-	return s.Conversation(ctx, intoID)
-}
-
 // scanConversation reads one row selected with conversationColumns.
 func scanConversation(row scanner) (domain.Conversation, error) {
 	return scanConversationWith(row)
@@ -464,7 +421,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound, &c.DisappearingTimer,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return c, err

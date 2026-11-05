@@ -218,6 +218,10 @@ var migrations = []migrationStep{
 		ALTER TABLE messages ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE messages ADD COLUMN view_once INTEGER NOT NULL DEFAULT 0;
 	CREATE INDEX messages_expiry ON messages(expires_at) WHERE expires_at > 0;`},
+	// A chat's own disappearing-message timer, in seconds, reported
+	// separately from the general conversation sync so a connector that
+	// does not know the current setting never resets one already stored.
+	{sql: `ALTER TABLE conversations ADD COLUMN disappearing_timer INTEGER NOT NULL DEFAULT 0;`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

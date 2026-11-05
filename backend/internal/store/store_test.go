@@ -150,6 +150,7 @@ func storeCalls(t *testing.T, s *store.Store) map[string]func() error {
 		"SetPinned":            func() error { return s.SetPinned(ctx, "c", true) },
 		"SetArchived":          func() error { return s.SetArchived(ctx, "c", true) },
 		"SetOrganized":         func() error { _, err := s.SetOrganized(ctx, "c", true, true); return err },
+		"SetDisappearingTimer": func() error { _, err := s.SetDisappearingTimer(ctx, "c", 10); return err },
 		"UnreadTotal":          func() error { _, err := s.UnreadTotal(ctx); return err },
 		"UnreadByService":      func() error { _, err := s.UnreadByService(ctx); return err },
 		"AddMessage":           func() error { _, _, err := s.AddMessage(ctx, message); return err },
