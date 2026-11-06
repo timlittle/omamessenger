@@ -1,9 +1,9 @@
 // Checks the service rail: it has one entry per Rail.items() result,
 // clicking an entry emits selected() with its key, a busy rail (long
 // account names, four-digit unread counts, every status dot) never
-// squashes an entry's unread badge into its glyph, and an account entry
+// squashes an entry's unread badge into its glyph, an account entry
 // (but not a service entry covering just one account) shows its own
-// account colour dot.
+// account colour dot, and a Signal account gets its own glyph and label.
 import QtQuick
 import QtTest
 import Quickshell
@@ -20,7 +20,8 @@ ShellRoot {
   property var accounts: [
     { id: "a1", service: "telegram", name: "Alice", status: "connected" },
     { id: "a2", service: "telegram", name: "Bob", status: "connecting" },
-    { id: "a3", service: "whatsapp", name: "Work", status: "connected" }
+    { id: "a3", service: "whatsapp", name: "Work", status: "connected" },
+    { id: "a4", service: "signal", name: "Personal", status: "connected" }
   ]
   property var conversations: []
   property var railItems: Rail.items(root.accounts, root.conversations)
@@ -89,8 +90,8 @@ ShellRoot {
 
   // run drives the rail and checks the outcome.
   function run(): void {
-    if (root.railItems.length !== 5)
-      return Check.fail("expected 5 rail entries (all, 2 services, 2 telegram accounts), got "
+    if (root.railItems.length !== 6)
+      return Check.fail("expected 6 rail entries (all, 3 services, 2 telegram accounts), got "
         + root.railItems.length);
 
     const list = Check.find(rail, "entry-service:whatsapp");
@@ -100,6 +101,13 @@ ShellRoot {
     t.mouseClick(list, list.width / 2, list.height / 2);
     if (JSON.stringify(root.selectedKeys) !== '["service:whatsapp"]')
       return Check.fail("selected " + JSON.stringify(root.selectedKeys) + ", want [\"service:whatsapp\"]");
+
+    const signalEntry = Check.find(rail, "entry-service:signal");
+    if (!signalEntry) return Check.fail("entry-service:signal not found");
+    const signalGlyph = Check.find(signalEntry, "glyph");
+    if (!signalGlyph || signalGlyph.text === "") return Check.fail("Signal's rail entry has no glyph");
+    if (signalGlyph.text === Check.find(Check.find(rail, "entry-service:whatsapp"), "glyph").text)
+      return Check.fail("Signal's glyph matches WhatsApp's");
 
     for (const item of root.busyItems) {
       if (!root.checkBusyEntry(item.key)) return;

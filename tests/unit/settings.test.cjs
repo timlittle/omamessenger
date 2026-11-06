@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   notifications: true, notificationDetail: 'none', readReceipts: true,
   spellCheck: true, spellLanguage: 'auto',
   defaultNotificationSound: '', whatsappNotificationSound: '', telegramNotificationSound: '',
+  signalNotificationSound: '',
 };
 
 test('withDefaults uses the manifest defaults when nothing was changed', () => {
@@ -25,21 +26,24 @@ test('withDefaults keeps the values the user changed', () => {
     notifications: false, notificationDetail: 'Name only', readReceipts: false,
     spellCheck: false, spellLanguage: 'British English', unrelated: 'x',
     defaultNotificationSound: '/sounds/default.ogg', whatsappNotificationSound: 'none', telegramNotificationSound: '/sounds/telegram.ogg',
+    signalNotificationSound: '/sounds/signal.ogg',
   });
 
   assert.deepEqual(got, {
     notifications: false, notificationDetail: 'nameOnly', readReceipts: false,
     spellCheck: false, spellLanguage: 'en_GB',
     defaultNotificationSound: '/sounds/default.ogg', whatsappNotificationSound: 'none', telegramNotificationSound: '/sounds/telegram.ogg',
+    signalNotificationSound: '/sounds/signal.ogg',
   });
 });
 
 test('withDefaults falls back to "" for a notification sound setting that is not a string', () => {
-  const got = Settings.withDefaults({ defaultNotificationSound: true, whatsappNotificationSound: 42 });
+  const got = Settings.withDefaults({ defaultNotificationSound: true, whatsappNotificationSound: 42, signalNotificationSound: 42 });
 
   assert.strictEqual(got.defaultNotificationSound, '');
   assert.strictEqual(got.whatsappNotificationSound, '');
   assert.strictEqual(got.telegramNotificationSound, '');
+  assert.strictEqual(got.signalNotificationSound, '');
 });
 
 test('withDefaults falls back to the current readReceipts value, not the manifest default, when the caller passes one', () => {

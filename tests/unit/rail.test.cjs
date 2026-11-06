@@ -6,10 +6,11 @@ const { load } = require('./load.cjs');
 
 const Rail = load('lib/Rail.js');
 
-test('items: orders entries as all, then services in order whatsapp/telegram', () => {
+test('items: orders entries as all, then services in order whatsapp/telegram/signal', () => {
   const accounts = [
     { id: 'a1', service: 'telegram', name: 'Tel1', status: 'connected' },
-    { id: 'a2', service: 'whatsapp', name: 'WA1', status: 'connected' }
+    { id: 'a2', service: 'whatsapp', name: 'WA1', status: 'connected' },
+    { id: 'a3', service: 'signal', name: 'Sig1', status: 'connected' }
   ];
   const conversations = [];
 
@@ -20,6 +21,8 @@ test('items: orders entries as all, then services in order whatsapp/telegram', (
   assert.strictEqual(result[1].service, 'whatsapp');
   assert.strictEqual(result[2].kind, 'service');
   assert.strictEqual(result[2].service, 'telegram');
+  assert.strictEqual(result[3].kind, 'service');
+  assert.strictEqual(result[3].service, 'signal');
 });
 
 test('items: includes account entries only when service has more than one', () => {
@@ -284,7 +287,8 @@ test('next: handles null or undefined items', () => {
 test('serviceLabel names each service for display', () => {
   assert.strictEqual(Rail.serviceLabel('whatsapp'), 'WhatsApp');
   assert.strictEqual(Rail.serviceLabel('telegram'), 'Telegram');
-  assert.strictEqual(Rail.serviceLabel('signal'), 'signal');
+  assert.strictEqual(Rail.serviceLabel('signal'), 'Signal');
+  assert.strictEqual(Rail.serviceLabel('carrierpigeon'), 'carrierpigeon');
 });
 
 test('serviceLabel prefers the helper\'s own name when it names the service', () => {

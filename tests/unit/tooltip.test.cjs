@@ -34,8 +34,13 @@ test('format uses the helper\'s own service names when it names one', () => {
 });
 
 test('format falls back to the service id for one it does not know', () => {
+  const text = Tooltip.format({ total: 1, byService: { carrierpigeon: 1 } });
+  assert.strictEqual(text, 'OmaMessenger · 1 unread\ncarrierpigeon: 1 unread');
+});
+
+test('format names Signal like every other known service', () => {
   const text = Tooltip.format({ total: 1, byService: { signal: 1 } });
-  assert.strictEqual(text, 'OmaMessenger · 1 unread\nsignal: 1 unread');
+  assert.strictEqual(text, 'OmaMessenger · 1 unread\nSignal: 1 unread');
 });
 
 test('format adds a line for each account that is not connected', () => {

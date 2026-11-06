@@ -11,9 +11,11 @@
 // and hands its file:// URL to the player, unless a fake
 // do-not-disturb check reports "on", in which case nothing plays -
 // checked with a fake so this never shells out to the real
-// omarchy-shell.
+// omarchy-shell; and that Signal resolves its own notification sound
+// setting, not WhatsApp's.
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import "ui"
 import "Check.js" as Check
 
@@ -25,6 +27,7 @@ ShellRoot {
   property int listAttempts: 0
   property int soundCheckAttempts: 0
   property int dndCheckAttempts: 0
+  property int signalSoundAttempts: 0
 
   // notificationClickForwarded records whether Service's event signal
   // relayed a notification.clicked, as the panel would rely on.
@@ -75,7 +78,7 @@ ShellRoot {
   // path to the player.
   function checkNotificationSound(): void {
     service.soundPlayer = root.fakeSoundPlayer;
-    service._whatsappSound = String(Qt.resolvedUrl("ping.ogg")).replace("file://", "");
+    service._serviceSounds = { whatsapp: String(Qt.resolvedUrl("ping.ogg")).replace("file://", "") };
     service._handleEvent("notification.sound", { conversationId: "conv-9", service: "whatsapp", hasCustomSound: false });
     root.pollNotificationSound();
   }
@@ -116,17 +119,56 @@ ShellRoot {
     if (root.dndCheckAttempts < 5) { dndCheckTimer.start(); return; }
 
     if (root.fakeSoundPlayer.played.length !== 1)
-      Check.fail("a do-not-disturb check reporting \"on\" did not suppress the sound: played = "
+      return Check.fail("a do-not-disturb check reporting \"on\" did not suppress the sound: played = "
         + JSON.stringify(root.fakeSoundPlayer.played));
+
+    root.checkSignalGetsItsOwnSound();
   }
 
-  // listConversations checks for the eleven conversations the README
-  // documents, retrying for a few seconds while the demo connectors seed.
+  // checkSignalGetsItsOwnSound gives Signal its own notification sound
+  // (chime.wav, much bigger than WhatsApp's ping.ogg) and checks a
+  // Signal arrival plays that file's own content, not WhatsApp's: the
+  // regression this guards against resolved every non-Telegram service
+  // to the WhatsApp setting, so Signal would have played WhatsApp's sound.
+  function checkSignalGetsItsOwnSound(): void {
+    service.doNotDisturbCheck = null;
+    root.fakeSoundPlayer.played = [];
+    service._serviceSounds = {
+      whatsapp: String(Qt.resolvedUrl("ping.ogg")).replace("file://", ""),
+      signal: String(Qt.resolvedUrl("chime.wav")).replace("file://", "")
+    };
+    service._handleEvent("notification.sound", { conversationId: "conv-9", service: "signal", hasCustomSound: false });
+    root.signalSoundAttempts = 0;
+    root.pollSignalSound();
+  }
+
+  // pollSignalSound retries until Signal's own sound reaches the player,
+  // then checks its transcoded size is close to chime.wav's own, not
+  // ping.ogg's much smaller one, so a wrongly reused WhatsApp setting
+  // cannot pass by coincidence.
+  function pollSignalSound(): void {
+    if (root.fakeSoundPlayer.played.length > 0) {
+      const url = root.fakeSoundPlayer.played[0];
+      playedFile.path = url.replace("file://", "");
+      const size = playedFile.text().length;
+      if (size < 50000)
+        Check.fail("Signal's notification played a " + size + "-byte file, want chime.wav's size, not WhatsApp's smaller ping.ogg");
+      return;
+    }
+
+    root.signalSoundAttempts++;
+    if (root.signalSoundAttempts >= 50) return Check.fail("Signal's notification.sound never reached soundPlayer.play");
+
+    signalSoundTimer.start();
+  }
+
+  // listConversations checks for the fixture's thirteen conversations,
+  // retrying for a few seconds while the demo connectors seed.
   function listConversations(): void {
     service.request("conversations.list", {}, function(error, result) {
       if (error) return Check.fail("conversations.list failed: " + JSON.stringify(error));
 
-      if (Array.isArray(result) && result.length === 11) {
+      if (Array.isArray(result) && result.length === 13) {
         root.conversations = result;
         root.checkReadReceiptsToggle();
         root.sendToMum();
@@ -135,7 +177,7 @@ ShellRoot {
 
       root.listAttempts++;
       if (root.listAttempts >= 50)
-        return Check.fail("got " + (result ? result.length : 0) + " conversations after retrying, want 11");
+        return Check.fail("got " + (result ? result.length : 0) + " conversations after retrying, want 13");
 
       retryTimer.start();
     });
@@ -206,6 +248,15 @@ ShellRoot {
     });
   }
 
+  // playedFile reads a played sound's size, blocking since the file is
+  // already on disk by the time pollSignalSound checks it.
+  FileView {
+    id: playedFile
+    blockLoading: true
+    blockAllReads: true
+    printErrors: false
+  }
+
   Service {
     id: service
 
@@ -253,6 +304,13 @@ ShellRoot {
     id: dndCheckTimer
     interval: 50
     onTriggered: root.pollDoNotDisturb()
+  }
+
+  // signalSoundTimer paces pollSignalSound's retry.
+  Timer {
+    id: signalSoundTimer
+    interval: 100
+    onTriggered: root.pollSignalSound()
   }
 
   // A deliberately unreachable deadline: it only fires, and fails the

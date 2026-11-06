@@ -11,7 +11,8 @@
 // mouse — through the same routeKey dispatch Panel.qml uses: adding a
 // Telegram account by pressing t, switching to the phone step and back
 // out with Escape; adding WhatsApp with w then its own QR/phone switch
-// down to the link-code step; removing the second of two accounts with
+// down to the link-code step; adding Signal with s, which shows its QR
+// code the same way; removing the second of two accounts with
 // j then y, and cancelling a removal with n; and that typing letters
 // into a field (even ones that are mnemonics elsewhere) only ever types,
 // never fires a shortcut. No helper runs, so nothing reaches Telegram.
@@ -516,6 +517,37 @@ ShellRoot {
     service.event("auth.step", { accountId: controller.accountId, kind: "linkcode", hint: "Enter this code on your phone: ABCD-1234" });
     if (controller.stage !== "linkcode") return Check.fail("the link-code step did not show: " + controller.stage);
 
+    controller.cancel();
+    service.services = [];
+    stepper.attempts = 0;
+    root.beginAddSignalByLetter();
+  }
+
+  // beginAddSignalByLetter opens the chooser with three services and
+  // waits for it to take focus, to check the s mnemonic adds Signal.
+  function beginAddSignalByLetter(): void {
+    service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }, { id: "signal", name: "Signal" }];
+    service.requests = [];
+    controller.run("account.add");
+
+    root.waitForFocus(() => view.activeFocus, "the service chooser", root.checkAddSignalByLetterS);
+  }
+
+  // checkAddSignalByLetterS presses s to add Signal straight away, then
+  // shows its QR code, the same flow WhatsApp and Telegram use.
+  function checkAddSignalByLetterS(): void {
+    t.keyClick("s");
+    if (controller.stage !== "waiting" || controller.serviceName !== "Signal")
+      return Check.fail("s did not add Signal: " + controller.stage);
+
+    service.event("auth.step", { accountId: controller.accountId, kind: "qr", qr: "cG5n", hint: "Scan it" });
+    root.waitForFocus(() => controller.stage === "qr" && root.anyFocused(), "Signal's QR step",
+      root.checkSignalCancels);
+  }
+
+  // checkSignalCancels cancels Signal's own sign-in, then moves on to
+  // the removal checks.
+  function checkSignalCancels(): void {
     controller.cancel();
     service.services = [];
     stepper.attempts = 0;

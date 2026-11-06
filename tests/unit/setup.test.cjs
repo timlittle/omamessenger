@@ -43,12 +43,13 @@ test('qrSource turns the helper\'s base64 PNG into an image URL', () => {
 test('serviceMnemonic names the letter a known service answers to, avoiding j and k', () => {
   assert.strictEqual(Setup.serviceMnemonic('telegram'), 't');
   assert.strictEqual(Setup.serviceMnemonic('whatsapp'), 'w');
-  assert.strictEqual(Setup.serviceMnemonic('signal'), '');
+  assert.strictEqual(Setup.serviceMnemonic('signal'), 's');
+  assert.strictEqual(Setup.serviceMnemonic('carrierpigeon'), '');
 });
 
 test('mnemonicLabel prefixes the letter, or leaves text alone without one', () => {
   assert.strictEqual(Setup.mnemonicLabel('t', 'Telegram'), 't  Telegram');
-  assert.strictEqual(Setup.mnemonicLabel('', 'Signal'), 'Signal');
+  assert.strictEqual(Setup.mnemonicLabel('', 'Carrier Pigeon'), 'Carrier Pigeon');
 });
 
 test('wrapIndex moves through the list and wraps onto -1, the "nothing chosen" slot', () => {
