@@ -311,3 +311,76 @@ func TestPollStore_UnknownMessageNotFound(t *testing.T) {
 		t.Error("pollTally() found a poll never saved")
 	}
 }
+
+// TestNextVoteCount_IncrementsPerVoterPerMessage checks that each
+// voter's own counter for a poll starts at one and increases with
+// every vote, independently of any other voter's or message's own
+// counter.
+func TestNextVoteCount_IncrementsPerVoterPerMessage(t *testing.T) {
+	t.Parallel()
+
+	store := newTestMediaStore(t)
+
+	first, err := store.nextVoteCount(t.Context(), "conv-1", "msg-1", "voter-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.nextVoteCount(t.Context(), "conv-1", "msg-1", "voter-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.nextVoteCount(t.Context(), "conv-1", "msg-1", "voter-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if first != 1 || second != 2 {
+		t.Errorf("nextVoteCount() = %d, %d, want 1, 2", first, second)
+	}
+	if other != 1 {
+		t.Errorf("a second voter's nextVoteCount() = %d, want 1", other)
+	}
+}
+
+// TestRecentIncoming_NewestFirstUpToLimit checks that recentIncoming
+// lists a conversation's own saved messages newest first, bounded by
+// limit, and never a message saved for a different conversation.
+func TestRecentIncoming_NewestFirstUpToLimit(t *testing.T) {
+	t.Parallel()
+
+	store := newTestMediaStore(t)
+
+	for _, id := range []string{"msg-1", "msg-2", "msg-3"} {
+		if err := store.putMessageMeta(t.Context(), "conv-1", id, "guid-"+id, []byte("token-"+id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.putMessageMeta(t.Context(), "conv-2", "other", "guid-other", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	metas, err := store.recentIncoming(t.Context(), "conv-1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 2 || metas[0].messageID != "msg-3" || metas[1].messageID != "msg-2" {
+		t.Errorf("recentIncoming() = %+v, want msg-3 then msg-2", metas)
+	}
+}
+
+// TestRecentIncoming_UnknownConversationEmpty checks that a
+// conversation with nothing saved reports no messages rather than an
+// error.
+func TestRecentIncoming_UnknownConversationEmpty(t *testing.T) {
+	t.Parallel()
+
+	store := newTestMediaStore(t)
+
+	metas, err := store.recentIncoming(t.Context(), "missing", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 0 {
+		t.Errorf("recentIncoming() = %+v, want none", metas)
+	}
+}

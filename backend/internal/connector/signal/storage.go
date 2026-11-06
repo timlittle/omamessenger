@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS poll_votes (
 	voter_id        TEXT NOT NULL,
 	option_id       TEXT NOT NULL,
 	PRIMARY KEY (conversation_id, message_id, voter_id, option_id)
+);
+CREATE TABLE IF NOT EXISTS poll_vote_counters (
+	conversation_id TEXT NOT NULL,
+	message_id      TEXT NOT NULL,
+	voter_id        TEXT NOT NULL,
+	counter         INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (conversation_id, message_id, voter_id)
 );`
 
 // openMediaStore opens, creating if needed, the database that holds
@@ -362,4 +369,71 @@ func (m *mediaStore) pollVoters(ctx context.Context, conversationRemoteID, messa
 	}
 
 	return votersByOption, len(everyVoter), rows.Err()
+}
+
+// nextVoteCount increments and returns voterID's own counter for the
+// poll tracked under messageRemoteID: the per-voter counter Signal's
+// own vote protocol needs (see vote.go) and signalmeow does not keep
+// for us.
+func (m *mediaStore) nextVoteCount(ctx context.Context, conversationRemoteID, messageRemoteID, voterID string) (uint32, error) {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("signal: next vote count: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // only reached after Commit fails or on an early return, nothing left to flush
+
+	const upsert = `INSERT INTO poll_vote_counters (conversation_id, message_id, voter_id, counter) VALUES (?, ?, ?, 1)
+		ON CONFLICT (conversation_id, message_id, voter_id) DO UPDATE SET counter = counter + 1`
+	if _, err := tx.ExecContext(ctx, upsert, conversationRemoteID, messageRemoteID, voterID); err != nil {
+		return 0, fmt.Errorf("signal: next vote count: %w", err)
+	}
+
+	const q = `SELECT counter FROM poll_vote_counters WHERE conversation_id = ? AND message_id = ? AND voter_id = ?`
+	var counter int64
+	if err := tx.QueryRowContext(ctx, q, conversationRemoteID, messageRemoteID, voterID).Scan(&counter); err != nil {
+		return 0, fmt.Errorf("signal: next vote count: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("signal: next vote count: %w", err)
+	}
+
+	return uint32(counter), nil
+}
+
+// incomingMeta is one incoming message's own server GUID and
+// report-spam token, as recentIncoming lists them.
+type incomingMeta struct {
+	messageID   string
+	serverGUID  string
+	reportToken []byte
+}
+
+// recentIncoming lists conversationRemoteID's most recently saved
+// incoming messages, newest first, up to limit of them: MarkRead's
+// own source of which senders and timestamps to send a read receipt
+// for, and ReportSpam's own source of which server GUIDs to report.
+// message_meta holds only incoming originals (see events.go's
+// rememberMessageMeta), so ordering by its own insertion order is
+// ordering by recency.
+func (m *mediaStore) recentIncoming(ctx context.Context, conversationRemoteID string, limit int) ([]incomingMeta, error) {
+	const q = `SELECT message_id, server_guid, report_token FROM message_meta
+		WHERE conversation_id = ? ORDER BY rowid DESC LIMIT ?`
+
+	rows, err := m.db.QueryContext(ctx, q, conversationRemoteID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("signal: load recent messages: %w", err)
+	}
+	defer rows.Close()
+
+	var metas []incomingMeta
+	for rows.Next() {
+		var meta incomingMeta
+		if err := rows.Scan(&meta.messageID, &meta.serverGUID, &meta.reportToken); err != nil {
+			return nil, fmt.Errorf("signal: load recent messages: %w", err)
+		}
+		metas = append(metas, meta)
+	}
+
+	return metas, rows.Err()
 }
