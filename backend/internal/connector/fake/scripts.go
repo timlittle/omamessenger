@@ -158,4 +158,23 @@ var scripts = []accountScript{
 			{RemoteID: "tg:contact-jo", Name: "Jo Park"},
 		},
 	},
+	{
+		account:      domain.Account{ID: "sig-personal", Service: domain.ServiceSignal, Name: "Personal"},
+		connectDelay: 600 * time.Millisecond,
+		conversations: []conversationScript{
+			{
+				remoteID: "sig:robin", title: "Robin", kind: domain.KindDirect, count: 6, unread: 1,
+				texts: []string{"Linked the new phone today", "History came through fine", "Talk later"},
+			},
+			{
+				remoteID: "sig:book-club", title: "Book Club", kind: domain.KindGroup, members: 4, count: 9, unread: 2,
+				groupSenders: []string{"Tasha", "Wren"},
+				texts:        []string{"Next pick is due Friday", "I'm halfway through", "Same time as usual?"},
+			},
+		},
+		contacts: []domain.Contact{
+			{RemoteID: "sig:contact-robin", Name: "Robin Ashworth"},
+			{RemoteID: "sig:contact-tasha", Name: "Tasha Obi"},
+		},
+	},
 }

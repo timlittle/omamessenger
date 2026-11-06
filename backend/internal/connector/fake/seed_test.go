@@ -21,6 +21,7 @@ func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 			"wa:sam-spotty": {4, 0}, "wa:flat-4b": {12, 5}, "wa:dentist": {2, 0},
 			"tg:nadia": {10, 2}, "tg:omarchy-users": {150, 12}, "tg:saved-messages": {5, 0},
 			"tg:platform-team": {20, 4}, "tg:jordan-manager": {8, 0},
+			"sig:robin": {6, 1}, "sig:book-club": {9, 2},
 		}
 
 		if len(sink.Messages()) != len(want) {

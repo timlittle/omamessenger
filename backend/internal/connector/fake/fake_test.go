@@ -18,7 +18,7 @@ func TestNew_CreatesTheDemoAccounts(t *testing.T) {
 		ids = append(ids, c.Account().ID)
 	}
 
-	if want := []string{"wa-personal", "tg-personal", "tg-work"}; !slices.Equal(ids, want) {
+	if want := []string{"wa-personal", "tg-personal", "tg-work", "sig-personal"}; !slices.Equal(ids, want) {
 		t.Errorf("accounts = %v, want %v", ids, want)
 	}
 }
