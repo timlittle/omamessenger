@@ -21,8 +21,8 @@ var ErrAlreadyRunning = errors.New("signal: already running")
 // not currently connected.
 var errNotConnected = errors.New("signal: not connected")
 
-// errNotImplemented reports an action this connector cannot perform
-// yet: sending and acting on messages are a later addition.
+// errNotImplemented reports a FetchMedia asked for a message this
+// connector never saved an attachment pointer for.
 var errNotImplemented = errors.New("signal: not yet implemented")
 
 // opener opens the account's session, linking by QR code if needed,
@@ -162,17 +162,6 @@ func (c *Connector) reportStatus(ctx context.Context, sink connector.Sink, statu
 	}
 
 	return false, nil
-}
-
-// Send is not implemented yet: sending is a later addition.
-func (*Connector) Send(context.Context, domain.Conversation, domain.Message) error {
-	return errNotImplemented
-}
-
-// MarkRead is not implemented yet: sending read receipts is a later
-// addition.
-func (*Connector) MarkRead(context.Context, domain.Conversation) error {
-	return errNotImplemented
 }
 
 // Logout tells Signal to unlink this device when a run is connected,

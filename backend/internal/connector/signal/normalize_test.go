@@ -349,3 +349,46 @@ func FuzzNormalizeDataMessage(f *testing.F) {
 		normalizeDataMessage(aci, "Fuzzer", msg.GetTimestamp(), &msg, false)
 	})
 }
+
+// TestOutgoingBodyRanges_BuildsStyleAndMentionRanges checks that a
+// formatting span becomes a style range and a mention becomes a
+// MentionAci range, in the order given.
+func TestOutgoingBodyRanges_BuildsStyleAndMentionRanges(t *testing.T) {
+	t.Parallel()
+
+	spans := []domain.Span{{Kind: domain.SpanBold, Start: 0, End: 4}}
+	mentions := []domain.Mention{{UserID: aci.String(), Offset: 5, Length: 1}}
+
+	ranges := outgoingBodyRanges(spans, mentions)
+	if len(ranges) != 2 {
+		t.Fatalf("outgoingBodyRanges() = %d ranges, want 2", len(ranges))
+	}
+	if ranges[0].GetStyle() != signalpb.BodyRange_BOLD || ranges[0].GetStart() != 0 || ranges[0].GetLength() != 4 {
+		t.Errorf("ranges[0] = %+v, want a BOLD style range at 0,4", ranges[0])
+	}
+	if ranges[1].GetMentionAci() != aci.String() || ranges[1].GetStart() != 5 || ranges[1].GetLength() != 1 {
+		t.Errorf("ranges[1] = %+v, want a mention range at 5,1", ranges[1])
+	}
+}
+
+// TestOutgoingBodyRanges_NoneGivesNil checks that no spans and no
+// mentions builds no ranges at all, rather than an empty slice.
+func TestOutgoingBodyRanges_NoneGivesNil(t *testing.T) {
+	t.Parallel()
+
+	if got := outgoingBodyRanges(nil, nil); got != nil {
+		t.Errorf("outgoingBodyRanges(nil, nil) = %+v, want nil", got)
+	}
+}
+
+// TestOutgoingBodyRanges_DropsUnknownStyle checks that a span kind
+// Signal has no style for, such as an underline, is dropped rather
+// than sent as a malformed range.
+func TestOutgoingBodyRanges_DropsUnknownStyle(t *testing.T) {
+	t.Parallel()
+
+	spans := []domain.Span{{Kind: domain.SpanUnderline, Start: 0, End: 3}}
+	if got := outgoingBodyRanges(spans, nil); got != nil {
+		t.Errorf("outgoingBodyRanges(underline) = %+v, want nil", got)
+	}
+}

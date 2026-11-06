@@ -1,8 +1,10 @@
 package signal
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -12,6 +14,46 @@ import (
 func messageRemoteID(aci uuid.UUID, sentTimestamp uint64) string {
 	return aci.String() + ":" + strconv.FormatUint(sentTimestamp, 10)
 }
+
+// errMalformedMessageRemoteID reports a message remote id that is not
+// the "aci:timestamp" shape messageRemoteID builds.
+var errMalformedMessageRemoteID = errors.New("signal: malformed message id")
+
+// parseMessageRemoteID reverses messageRemoteID, for an action that
+// needs the sender and timestamp a message's own id already encodes:
+// an edit, a delete, a reaction or a poll vote all target one this way,
+// with no separate lookup needed.
+func parseMessageRemoteID(id string) (aci uuid.UUID, sentTimestamp uint64, err error) {
+	rawACI, rawTimestamp, found := strings.Cut(id, ":")
+	if !found {
+		return uuid.Nil, 0, fmt.Errorf("%w: %q", errMalformedMessageRemoteID, id)
+	}
+
+	aci, err = parseACI(rawACI)
+	if err != nil {
+		return uuid.Nil, 0, fmt.Errorf("%w: %q", errMalformedMessageRemoteID, id)
+	}
+
+	sentTimestamp, err = strconv.ParseUint(rawTimestamp, 10, 64)
+	if err != nil {
+		return uuid.Nil, 0, fmt.Errorf("%w: %q", errMalformedMessageRemoteID, id)
+	}
+
+	return aci, sentTimestamp, nil
+}
+
+// boolp takes the address of a bool value, for the generated protobuf
+// structs that hold every optional field as a pointer.
+func boolp(b bool) *bool { return &b }
+
+// u32p takes the address of a uint32 value, for the same reason.
+func u32p(n uint32) *uint32 { return &n }
+
+// u64p takes the address of a uint64 value, for the same reason.
+func u64p(n uint64) *uint64 { return &n }
+
+// strp takes the address of a string value, for the same reason.
+func strp(s string) *string { return &s }
 
 // groupChatLength is how long a group's chat id is as signalmeow gives
 // it: a base64-encoded 32-byte group identifier. A direct chat's id is

@@ -21,6 +21,51 @@ func TestMessageRemoteID(t *testing.T) {
 	}
 }
 
+// TestParseMessageRemoteID_RoundTrips checks that parsing what
+// messageRemoteID built recovers the same sender and timestamp.
+func TestParseMessageRemoteID_RoundTrips(t *testing.T) {
+	t.Parallel()
+
+	aci := uuid.New()
+	id := messageRemoteID(aci, 1700000000123)
+
+	gotACI, gotTimestamp, err := parseMessageRemoteID(id)
+	if err != nil {
+		t.Fatalf("parseMessageRemoteID(%q) error = %v", id, err)
+	}
+	if gotACI != aci || gotTimestamp != 1700000000123 {
+		t.Errorf("parseMessageRemoteID(%q) = (%v, %d), want (%v, %d)", id, gotACI, gotTimestamp, aci, 1700000000123)
+	}
+}
+
+// TestParseMessageRemoteID_RejectsGarbage checks that an id missing
+// its separator, a malformed account id or a non-numeric timestamp is
+// reported as an error.
+func TestParseMessageRemoteID_RejectsGarbage(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{"", "no-colon-here", "not-a-uuid:123", uuid.New().String() + ":not-a-number"} {
+		if _, _, err := parseMessageRemoteID(id); err == nil {
+			t.Errorf("parseMessageRemoteID(%q) succeeded, want an error", id)
+		}
+	}
+}
+
+// FuzzParseMessageRemoteID checks that no input, however malformed,
+// makes parseMessageRemoteID panic: every caller feeds it an id the UI
+// echoed back, which was built from wire data this connector does not
+// otherwise trust.
+func FuzzParseMessageRemoteID(f *testing.F) {
+	f.Add("")
+	f.Add(messageRemoteID(uuid.New(), 1700000000000))
+	f.Add("garbage")
+	f.Add(":")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		_, _, _ = parseMessageRemoteID(s)
+	})
+}
+
 // TestIsGroupChat checks the length heuristic that tells a group's
 // chat id apart from a direct chat's, matching the real Signal
 // bridge's own makePortalKey rule.

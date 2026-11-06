@@ -11,31 +11,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// TestSend_NotImplemented checks that sending reports it is not
-// implemented yet, rather than silently doing nothing: S4 adds
-// sending.
-func TestSend_NotImplemented(t *testing.T) {
-	t.Parallel()
-
-	c := newTestConnector(newFakeDevice(uuid.New()))
-	err := c.Send(t.Context(), domain.Conversation{}, domain.Message{})
-	if !errors.Is(err, errNotImplemented) {
-		t.Errorf("Send() error = %v, want errNotImplemented", err)
-	}
-}
-
-// TestMarkRead_NotImplemented checks the same for marking a
-// conversation read.
-func TestMarkRead_NotImplemented(t *testing.T) {
-	t.Parallel()
-
-	c := newTestConnector(newFakeDevice(uuid.New()))
-	err := c.MarkRead(t.Context(), domain.Conversation{})
-	if !errors.Is(err, errNotImplemented) {
-		t.Errorf("MarkRead() error = %v, want errNotImplemented", err)
-	}
-}
-
 // TestLogout_Connected checks that Logout unlinks the connected
 // device.
 func TestLogout_Connected(t *testing.T) {

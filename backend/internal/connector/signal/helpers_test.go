@@ -3,6 +3,7 @@ package signal
 import (
 	"context"
 	"os"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,6 +56,37 @@ type fakeDevice struct {
 
 	downloadErr  error
 	downloadData []byte
+
+	sentDirect    []sentDirectCall
+	sendDirectErr error
+	sentGroup     []sentGroupCall
+	sendGroupErr  error
+
+	uploaded  [][]byte
+	uploadPtr *signalpb.AttachmentPointer
+	uploadErr error
+
+	spamReports   []spamReportCall
+	reportSpamErr error
+}
+
+// sentDirectCall records one sendDirect call a test can assert on.
+type sentDirectCall struct {
+	recipient uuid.UUID
+	content   *signalpb.Content
+}
+
+// sentGroupCall records one sendGroup call a test can assert on.
+type sentGroupCall struct {
+	gid     types.GroupIdentifier
+	content *signalpb.Content
+}
+
+// spamReportCall records one reportSpam call a test can assert on.
+type spamReportCall struct {
+	aci        uuid.UUID
+	serverGUID string
+	token      []byte
 }
 
 var _ device = (*fakeDevice)(nil)
@@ -145,6 +177,34 @@ func (d *fakeDevice) downloadAttachment(_ context.Context, _ *signalpb.Attachmen
 	return err
 }
 
+func (d *fakeDevice) sendDirect(_ context.Context, recipient uuid.UUID, content *signalpb.Content) error {
+	d.sentDirect = append(d.sentDirect, sentDirectCall{recipient: recipient, content: content})
+	return d.sendDirectErr
+}
+
+func (d *fakeDevice) sendGroup(_ context.Context, gid types.GroupIdentifier, content *signalpb.Content) error {
+	d.sentGroup = append(d.sentGroup, sentGroupCall{gid: gid, content: content})
+	return d.sendGroupErr
+}
+
+func (d *fakeDevice) uploadAttachment(_ context.Context, body []byte) (*signalpb.AttachmentPointer, error) {
+	if d.uploadErr != nil {
+		return nil, d.uploadErr
+	}
+
+	d.uploaded = append(d.uploaded, body)
+	if d.uploadPtr != nil {
+		return d.uploadPtr, nil
+	}
+
+	return &signalpb.AttachmentPointer{}, nil
+}
+
+func (d *fakeDevice) reportSpam(_ context.Context, aci uuid.UUID, serverGUID string, token []byte) error {
+	d.spamReports = append(d.spamReports, spamReportCall{aci: aci, serverGUID: serverGUID, token: token})
+	return d.reportSpamErr
+}
+
 // testOpener returns an opener that hands Run dev directly, with no
 // pairing and no session database, and reports freshlyLinked.
 func testOpener(dev device, freshlyLinked bool) opener {
@@ -170,4 +230,28 @@ func newTestConnector(dev *fakeDevice) *Connector {
 // its own with newTestMediaStore instead.
 func newInMemoryMediaStore(ctx context.Context) (*mediaStore, error) {
 	return openMediaStoreDSN(ctx, "file::memory:")
+}
+
+// mustOpenMediaStore opens a private, in-memory media store directly,
+// for a test that calls Connector.connected itself rather than going
+// through Run.
+func mustOpenMediaStore(t *testing.T) *mediaStore {
+	t.Helper()
+
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = media.close() })
+
+	return media
+}
+
+// writeTestFile writes data to path, failing the test on any error.
+func writeTestFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }

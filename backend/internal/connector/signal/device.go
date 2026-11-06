@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"go.mau.fi/mautrix-signal/pkg/libsignalgo"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/events"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/backuppb"
@@ -80,6 +81,21 @@ type device interface {
 	// downloadAttachment downloads and decrypts an attachment straight
 	// into file.
 	downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, file *os.File) error
+
+	// sendDirect sends content to recipient's own account, as a
+	// one-to-one message or a sync copy to this device's own account.
+	sendDirect(ctx context.Context, recipient uuid.UUID, content *signalpb.Content) error
+
+	// sendGroup sends content to a group's current members.
+	sendGroup(ctx context.Context, gid types.GroupIdentifier, content *signalpb.Content) error
+
+	// uploadAttachment uploads body to Signal's media servers and
+	// returns the pointer a DataMessage attaches it with.
+	uploadAttachment(ctx context.Context, body []byte) (*signalpb.AttachmentPointer, error)
+
+	// reportSpam reports aci's message, named by serverGUID and token,
+	// to Signal as spam.
+	reportSpam(ctx context.Context, aci uuid.UUID, serverGUID string, token []byte) error
 }
 
 // sigDevice adapts a signalmeow client and its session database to device.
@@ -178,6 +194,40 @@ func (d *sigDevice) backupChatItems(ctx context.Context, chatID uint64, anchor t
 func (*sigDevice) downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, file *os.File) error {
 	_, err := signalmeow.DownloadAttachmentWithPointer(ctx, ptr, nil, file)
 	return err
+}
+
+// errSendFailed reports a direct send signalmeow refused with no
+// error of its own to wrap.
+var errSendFailed = fmt.Errorf("signal: send failed")
+
+// sendDirect sends content to recipient.
+func (d *sigDevice) sendDirect(ctx context.Context, recipient uuid.UUID, content *signalpb.Content) error {
+	result := d.cli.SendMessage(ctx, libsignalgo.NewACIServiceID(recipient), content)
+	if !result.WasSuccessful {
+		if result.Error != nil {
+			return result.Error
+		}
+
+		return errSendFailed
+	}
+
+	return nil
+}
+
+// sendGroup sends content to a group's current members.
+func (d *sigDevice) sendGroup(ctx context.Context, gid types.GroupIdentifier, content *signalpb.Content) error {
+	_, err := d.cli.SendGroupMessage(ctx, gid, content)
+	return err
+}
+
+// uploadAttachment uploads body to Signal's media servers.
+func (d *sigDevice) uploadAttachment(ctx context.Context, body []byte) (*signalpb.AttachmentPointer, error) {
+	return d.cli.UploadAttachment(ctx, body)
+}
+
+// reportSpam reports aci's message as spam.
+func (d *sigDevice) reportSpam(ctx context.Context, aci uuid.UUID, serverGUID string, token []byte) error {
+	return d.cli.ReportSpam(ctx, aci, serverGUID, token)
 }
 
 // sessionStore is an account's Signal session database, plus a

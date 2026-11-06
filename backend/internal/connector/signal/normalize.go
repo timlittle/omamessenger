@@ -223,6 +223,63 @@ func spanKind(style signalpb.BodyRange_Style) (string, bool) {
 	}
 }
 
+// outgoingBodyRanges is bodyRanges and mentions run in reverse: it
+// builds the BodyRange list a DataMessage sends for m's formatting
+// spans and mentions. The UI already measures every span and mention
+// against the same literal text it put in m.Text (an @-mention is a
+// literal "@name" substring, the same convention WhatsApp's own
+// connector uses), so no text rewriting is needed here, only the wire
+// ranges that mark it.
+func outgoingBodyRanges(spans []domain.Span, mentionsList []domain.Mention) []*signalpb.BodyRange {
+	ranges := make([]*signalpb.BodyRange, 0, len(spans)+len(mentionsList))
+
+	for _, s := range spans {
+		style, ok := outgoingSpanStyle(s.Kind)
+		if !ok {
+			continue
+		}
+
+		ranges = append(ranges, &signalpb.BodyRange{
+			Start: u32p(uint32(s.Start)), Length: u32p(uint32(s.End - s.Start)),
+			AssociatedValue: &signalpb.BodyRange_Style_{Style: style},
+		})
+	}
+
+	for _, m := range mentionsList {
+		ranges = append(ranges, &signalpb.BodyRange{
+			Start: u32p(uint32(m.Offset)), Length: u32p(uint32(m.Length)),
+			AssociatedValue: &signalpb.BodyRange_MentionAci{MentionAci: m.UserID},
+		})
+	}
+
+	if len(ranges) == 0 {
+		return nil
+	}
+
+	return ranges
+}
+
+// outgoingSpanStyle is spanKind run in reverse: the BodyRange style a
+// formatting span's own kind sends as, or found false for a kind
+// Signal's own clients do not render (such as an underline, which
+// Signal has no style for).
+func outgoingSpanStyle(kind string) (signalpb.BodyRange_Style, bool) {
+	switch kind {
+	case domain.SpanBold:
+		return signalpb.BodyRange_BOLD, true
+	case domain.SpanItalic:
+		return signalpb.BodyRange_ITALIC, true
+	case domain.SpanSpoiler:
+		return signalpb.BodyRange_SPOILER, true
+	case domain.SpanStrike:
+		return signalpb.BodyRange_STRIKETHROUGH, true
+	case domain.SpanCode:
+		return signalpb.BodyRange_MONOSPACE, true
+	default:
+		return 0, false
+	}
+}
+
 // mentions maps Signal's "@-mention" style ranges to the UI's
 // mentions, naming each by id; the UI resolves the display name.
 func mentions(ranges []*signalpb.BodyRange) []domain.Mention {
