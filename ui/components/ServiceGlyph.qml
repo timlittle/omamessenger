@@ -7,10 +7,14 @@ Item {
   id: root
 
   property string service: ""
+  // U+F0FCC (md-message_lock) is outside the BMP, so it is written as
+  // a surrogate pair rather than a literal private-use character.
   readonly property string text: root.service === "whatsapp" ? ""
-    : root.service === "telegram" ? "" : ""
+    : root.service === "telegram" ? ""
+    : root.service === "signal" ? "\uDB83\uDFCC" : ""
   readonly property string label: root.service === "whatsapp" ? "WhatsApp"
-    : root.service === "telegram" ? "Telegram" : "Messages"
+    : root.service === "telegram" ? "Telegram"
+    : root.service === "signal" ? "Signal" : "Messages"
 
   implicitWidth: glyph.implicitWidth
   implicitHeight: glyph.implicitHeight

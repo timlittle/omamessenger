@@ -108,6 +108,7 @@ Item {
       "setup.accept": () => root._acceptChoose(),
       "setup.chooseTelegram": () => root._chooseById("telegram"),
       "setup.chooseWhatsapp": () => root._chooseById("whatsapp"),
+      "setup.chooseSignal": () => root._chooseById("signal"),
       "qr.usePhone": () => root.usePhone(),
       "phone.useQr": () => root.useQr(),
       "phone.back": () => (root.qr ? root.useQr() : root.cancel()),

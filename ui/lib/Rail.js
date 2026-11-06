@@ -7,7 +7,8 @@
 // SERVICES lists the services in rail order, with their labels.
 var SERVICES = [
   { id: 'whatsapp', label: 'WhatsApp' },
-  { id: 'telegram', label: 'Telegram' }
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'signal', label: 'Signal' }
 ];
 
 // RECENT_MS is how recent a chat's last message must be to show while older

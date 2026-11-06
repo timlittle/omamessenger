@@ -7,7 +7,7 @@
 
 // SERVICE_NAMES is this UI's fallback label for a service id, used only
 // when the helper's own services list does not already name it.
-var SERVICE_NAMES = { whatsapp: 'WhatsApp', telegram: 'Telegram' };
+var SERVICE_NAMES = { whatsapp: 'WhatsApp', telegram: 'Telegram', signal: 'Signal' };
 
 // STATUS_LABELS describes a disconnected account's status in a few
 // words, for the tooltip's own status lines.

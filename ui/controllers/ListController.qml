@@ -195,6 +195,7 @@ Item {
       "rail.all": () => root._setRail("all"),
       "rail.whatsapp": () => root._setRail("service:whatsapp"),
       "rail.telegram": () => root._setRail("service:telegram"),
+      "rail.signal": () => root._setRail("service:signal"),
       "rail.next": () => root._setRail(Rail.next(root.railItems, root.railKey, 1)),
       "rail.prev": () => root._setRail(Rail.next(root.railItems, root.railKey, -1)),
       "cursor.down": () => root._select(Selection.move(root.visibleIds(), root.selectedId, 1)),

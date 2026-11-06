@@ -46,6 +46,7 @@ var BINDINGS = [
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
   { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
   { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Show Telegram', command: true },
+  { action: 'rail.signal', keys: ['Ctrl+3'], contexts: ['global'], label: 'Show Signal', command: true },
   { action: 'rail.next', keys: ['Ctrl+Tab'], contexts: ['global'], label: 'Next account or service', command: true },
   { action: 'rail.prev', keys: ['Ctrl+Shift+Tab'], contexts: ['global'], label: 'Previous account or service', command: true },
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
@@ -185,6 +186,7 @@ var BINDINGS = [
   { action: 'setup.accept', keys: ['Enter'], contexts: ['chooseService'], label: 'Choose the highlighted service', hint: true },
   { action: 'setup.chooseTelegram', keys: ['t'], contexts: ['chooseService'], label: 'Choose Telegram', hint: true },
   { action: 'setup.chooseWhatsapp', keys: ['w'], contexts: ['chooseService'], label: 'Choose WhatsApp', hint: true },
+  { action: 'setup.chooseSignal', keys: ['s'], contexts: ['chooseService'], label: 'Choose Signal', hint: true },
 
   // The QR and phone steps can switch to each other without starting over.
   { action: 'qr.usePhone', keys: ['p'], contexts: ['qr'], label: 'Use phone number instead', hint: true },

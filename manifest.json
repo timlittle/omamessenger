@@ -18,7 +18,7 @@
   },
   "barWidget": {
     "displayName": "OmaMessenger",
-    "description": "Unread WhatsApp and Telegram messages, with a click to open the conversation window.",
+    "description": "Unread WhatsApp, Telegram and Signal messages, with a click to open the conversation window.",
     "category": "Messaging",
     "allowMultiple": false,
     "defaults": {
@@ -27,6 +27,7 @@
       "defaultNotificationSound": "",
       "whatsappNotificationSound": "",
       "telegramNotificationSound": "",
+      "signalNotificationSound": "",
       "readReceipts": true,
       "spellCheck": true,
       "spellLanguage": "Automatic",
@@ -79,6 +80,13 @@
         "label": "Telegram notification sound",
         "defaultValue": "",
         "description": "The same as the WhatsApp setting above, for Telegram."
+      },
+      {
+        "key": "signalNotificationSound",
+        "type": "path",
+        "label": "Signal notification sound",
+        "defaultValue": "",
+        "description": "The same as the WhatsApp setting above, for Signal."
       },
       {
         "key": "readReceipts",

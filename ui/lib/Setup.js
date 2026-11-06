@@ -14,7 +14,7 @@ var FIELDS = {
 // MNEMONICS maps a known service id to the single letter its chooser
 // button shows and answers to. Picked to avoid j and k, the list's own
 // up/down keys.
-var MNEMONICS = { telegram: 't', whatsapp: 'w' };
+var MNEMONICS = { telegram: 't', whatsapp: 'w', signal: 's' };
 
 // apiID reads the API id from my.telegram.org, or 0 when it is not a
 // positive whole number.

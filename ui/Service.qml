@@ -80,11 +80,11 @@ Item {
   // setting unchanged alongside the one it flips.
   property var _lastSettings: ({})
 
-  // _defaultSound, _whatsappSound and _telegramSound are the manifest
-  // notification sound settings; a conversation's own custom sound wins over these.
+  // _defaultSound and _serviceSounds are the manifest notification sound
+  // settings, keyed by service id for the per-service ones; a
+  // conversation's own custom sound wins over these.
   property string _defaultSound: ""
-  property string _whatsappSound: ""
-  property string _telegramSound: ""
+  property var _serviceSounds: ({})
 
   // soundPlayer plays a notification sound's file:// URL; tests override it with a fake.
   property var soundPlayer: null
@@ -178,8 +178,11 @@ Item {
     const merged = Settings.withDefaults(settings, root.readReceipts);
     root.readReceipts = merged.readReceipts;
     root._defaultSound = merged.defaultNotificationSound;
-    root._whatsappSound = merged.whatsappNotificationSound;
-    root._telegramSound = merged.telegramNotificationSound;
+    root._serviceSounds = {
+      whatsapp: merged.whatsappNotificationSound,
+      telegram: merged.telegramNotificationSound,
+      signal: merged.signalNotificationSound,
+    };
     root.reopenAfterRestart = Settings.reopenAfterRestart(settings);
     root.request("settings.apply", merged, function() {});
   }
@@ -314,7 +317,7 @@ Item {
   // _resolveAndPlaySound asks the helper for the sound lib/NotificationSound.js's
   // precedence picked, then plays it.
   function _resolveAndPlaySound(data: var, outcome: var): void {
-    const serviceSound = data.service === "telegram" ? root._telegramSound : root._whatsappSound;
+    const serviceSound = root._serviceSounds[data.service] ?? "";
     const decision = NotificationSound.resolve(!!data.hasCustomSound, serviceSound, root._defaultSound);
     if (decision.source === "silent") { if (outcome) outcome("silent"); return; }
 

@@ -10,6 +10,7 @@ var DEFAULTS = {
   notifications: true, notificationDetail: 'none', readReceipts: true,
   spellCheck: true, spellLanguage: 'auto', reopenAfterRestart: true,
   defaultNotificationSound: '', whatsappNotificationSound: '', telegramNotificationSound: '',
+  signalNotificationSound: '',
 };
 
 // DETAIL_LABELS maps manifest.json's notificationDetail option labels,
@@ -59,6 +60,7 @@ function withDefaults(settings, currentReadReceipts) {
     defaultNotificationSound: resolveSound(given.defaultNotificationSound),
     whatsappNotificationSound: resolveSound(given.whatsappNotificationSound),
     telegramNotificationSound: resolveSound(given.telegramNotificationSound),
+    signalNotificationSound: resolveSound(given.signalNotificationSound),
   };
 }
 
