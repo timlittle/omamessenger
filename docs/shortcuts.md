@@ -12,7 +12,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling). Ctrl+J inserts a new line instead while writing (see Open conversation); Alt+Shift+↓ / ↑ still jump from there |
 | Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
 | Alt+↓ / ↑ | Next / previous conversation (same as above: works from any mode and keeps it) |
-| Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
+| Ctrl+0 / 1 / 2 / 3 | All / WhatsApp / Telegram / Signal |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
@@ -156,7 +156,7 @@ The service chooser, shown when more than one service is offered, and the QR and
 | --- | --- |
 | j / k, ↓ / ↑ | Move the highlighted service |
 | Enter | Choose the highlighted service |
-| t / w | Jump straight to Telegram / WhatsApp |
+| t / w / s | Jump straight to Telegram / WhatsApp / Signal |
 | p | At the QR step, use a phone number instead |
 | q | At the phone step, go back to the QR code |
 | Esc | At the phone step, back to the QR code; anywhere else, cancel setup |

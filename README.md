@@ -1,18 +1,18 @@
 # OmaMessenger
 
-A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegram and WhatsApp accounts.
+A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegram, WhatsApp and Signal accounts.
 
 ![OmaMessenger](preview.png)
 
 OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and Hyprland manages it like any other app; a Go helper it starts handles the messaging underneath.
 
-> **Unofficial clients.** OmaMessenger is not made or endorsed by Telegram or WhatsApp. WhatsApp support uses an unofficial library, and WhatsApp may restrict or ban an account that uses one; Telegram can rate-limit or restrict accounts too. Consider trying it with an account you could afford to lose first. See [docs/privacy.md](docs/privacy.md).
+> **Unofficial clients.** OmaMessenger is not made or endorsed by Telegram, WhatsApp or Signal. WhatsApp and Signal support use unofficial libraries, and either service may restrict or ban an account that uses one; Telegram can rate-limit or restrict accounts too. Consider trying it with an account you could afford to lose first. See [docs/privacy.md](docs/privacy.md).
 
 Short clips of each feature are in [docs/demo.md](docs/demo.md).
 
 ## Features
 
-- One conversation list across every Telegram and WhatsApp account, filtered by service from the rail; give an account its own name, such as "Personal WhatsApp", once you have more than one for a service
+- One conversation list across every Telegram, WhatsApp and Signal account, filtered by service from the rail; give an account its own name, such as "Personal WhatsApp", once you have more than one for a service
 - Keyboard-first: every action has a shortcut, and **Ctrl+/** lists them all
 - Search across every conversation with **Ctrl+K**, and an unread view with **Ctrl+Shift+A**
 - Photos, video, GIFs, files, voice notes, link previews, replies, reactions, polls and @-mentions; a photo, video or GIF opens full size, and copy, save or open with **c**, **s** or **x**
@@ -59,6 +59,12 @@ To sign in with your own Telegram API keys instead of OmaMessenger's, see [docs/
 
 Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; scrolling back further asks your phone for more, so it needs to be online and reachable. If it is not, a note says so at the top of the conversation — try again once it is.
 
+## Sign in to Signal
+
+Choose **Add an account** in the window or the command palette. Scan the QR code shown with Signal (**Settings → Linked devices → Link new device**). History only ever comes across once, at that moment, and only if you choose **Transfer message history** on your phone when it asks; choosing **Don't transfer** links the device with no history at all, and there is no way to fetch it afterwards.
+
+Pin, archive and mute, set here, stay on this computer: Signal's own client can read what the phone has synced but not write back to it, so a later pin or archive on the phone never arrives here, and a change made here never reaches the phone. Mute already works this way for every service.
+
 ## Keyboard shortcuts
 
 | Keys | Does |
@@ -81,14 +87,14 @@ By default, a notification says only "New message": the **Notification detail** 
 Omarchy's own notification popups never play a sound, so OmaMessenger plays its own, through three settings that combine, most specific first:
 
 1. A conversation's own sound, picked with the command palette's **Set notification sound…** (**Reset notification sound** clears it).
-2. **WhatsApp notification sound** / **Telegram notification sound**, a plugin setting for every chat on that service without one of its own.
+2. **WhatsApp notification sound** / **Telegram notification sound** / **Signal notification sound**, a plugin setting for every chat on that service without one of its own.
 3. **Default notification sound**, a plugin setting for everything else.
 
-Each of the two plugin settings accepts a path to an MP3, WAV, Ogg, M4A or FLAC file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". OmaMessenger re-encodes whichever file you pick into a plain WAV before ever playing it, the same sandboxed re-encode a received video or voice note gets. A muted chat never plays a sound, whatever these settings say. A file ffmpeg cannot read as audio at all is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
+Each of the three plugin settings accepts a path to an MP3, WAV, Ogg, M4A or FLAC file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". OmaMessenger re-encodes whichever file you pick into a plain WAV before ever playing it, the same sandboxed re-encode a received video or voice note gets. A muted chat never plays a sound, whatever these settings say. A file ffmpeg cannot read as audio at all is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
 
 ## Data and privacy
 
-Accounts, sessions and messages stay on this computer, in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you. The helper talks only to Telegram's and WhatsApp's servers, and to GitHub once to download itself. Both connections are unofficial clients, which the services can restrict. Details, including every file it writes, are in [docs/privacy.md](docs/privacy.md).
+Accounts, sessions and messages stay on this computer, in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you. The helper talks only to Telegram's, WhatsApp's and Signal's own servers, and to GitHub once to download itself. All three connections are unofficial clients, which the services can restrict. Details, including every file it writes, are in [docs/privacy.md](docs/privacy.md).
 
 ## Uninstall
 
