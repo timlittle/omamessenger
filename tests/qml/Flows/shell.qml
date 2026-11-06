@@ -140,6 +140,7 @@ ShellRoot {
     root.waitForSamUnread,
     root.reopen,
     root.newChatWithBen,
+    root.waitForWhatsAppAccountForBen,
     root.waitForBen,
     root.openMum,
     root.waitForMumWithOlderHistory,
@@ -238,7 +239,7 @@ ShellRoot {
     // Each fake account stores its history before it reports connected, so
     // a search run any earlier could miss messages that are on their way.
     const accounts = helperService.accounts;
-    return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+    return root.listModel().count === 13 && accounts.length === 4 && accounts.every((a) => a.status === "connected");
   }
 
   // pinTopTwoChats pins the list's first two rows from the keyboard,
@@ -780,15 +781,38 @@ ShellRoot {
     return true;
   }
 
-  // newChatWithBen starts a chat with a WhatsApp contact. Ctrl+Tab once per
-  // account cycles all the way round, back to the WhatsApp account the
-  // dialog opens on.
+  // newChatWithBen starts a chat with a WhatsApp contact, opening the
+  // new-chat dialog; waitForWhatsAppAccountForBen steps it to the
+  // WhatsApp account before typing, since several accounts connect at
+  // the same delay and so settle in no fixed order.
   function newChatWithBen(): var {
     t.keyClick(Qt.Key_N, Qt.ControlModifier);
-    for (let i = 0; i < helperService.accounts.length; i++) t.keyClick(Qt.Key_Tab, Qt.ControlModifier);
-    root.type("Ben");
     root.expected = "";
     return true;
+  }
+
+  // accountService looks up accountId's service, for a dialog step that
+  // needs to know which account it landed on.
+  function accountService(accountId: string): string {
+    const account = helperService.accounts.find((a) => a.id === accountId);
+    return account ? account.service : "";
+  }
+
+  // waitForWhatsAppAccountForBen presses Ctrl+Tab until the dialog's
+  // account is a WhatsApp one, bounded by the account count so it can
+  // never spin forever, then types "Ben".
+  function waitForWhatsAppAccountForBen(): var {
+    const dialog = Check.find(root.panel(), "newChatDialog");
+    if (!dialog) return false;
+
+    if (root.accountService(dialog.accountId) === "whatsapp") {
+      root.type("Ben");
+      return true;
+    }
+
+    if (stepper.attempts >= helperService.accounts.length) return "no WhatsApp account found for the new-chat dialog";
+    t.keyClick(Qt.Key_Tab, Qt.ControlModifier);
+    return false;
   }
 
   // waitForBen presses Enter once Ben is listed, then holds until his

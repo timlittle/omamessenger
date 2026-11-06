@@ -79,7 +79,7 @@ ShellRoot {
   // ready window and a known rail to open the palette's commands from.
   function waitForList(): var {
     const accounts = helperService.accounts;
-    return root.listCount() === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+    return root.listCount() === 13 && accounts.length === 4 && accounts.every((a) => a.status === "connected");
   }
 
   // checkBaseline checks that with every overlay closed, no conversation

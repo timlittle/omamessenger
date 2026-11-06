@@ -60,9 +60,9 @@ ShellRoot {
     root.checkRemoveAccount,
     root.checkCloseQuestion,
     // Last, since starting a conversation with a contact who had none
-    // before permanently adds a twelfth row to the list, which the
+    // before permanently adds a fourteenth row to the list, which the
     // earlier steps' own checkShortcutStillWorks calls assume is still
-    // eleven.
+    // thirteen.
     root.checkNewChatDialogEscape,
     root.openNewChatDialog,
     root.waitForContactsLoaded,
@@ -127,7 +127,7 @@ ShellRoot {
     if (root.listCount() !== 5) return Check.fail("after " + afterWhat + ", Ctrl+2 gave " + root.listCount() + " rows, want 5");
 
     t.keyClick(Qt.Key_0, Qt.ControlModifier);
-    if (root.listCount() !== 11) return Check.fail("after " + afterWhat + ", Ctrl+0 gave " + root.listCount() + " rows, want 11");
+    if (root.listCount() !== 13) return Check.fail("after " + afterWhat + ", Ctrl+0 gave " + root.listCount() + " rows, want 13");
 
     return true;
   }
@@ -135,7 +135,7 @@ ShellRoot {
   // waitForList holds until the fixture's accounts have all connected.
   function waitForList(): var {
     const accounts = helperService.accounts;
-    return root.listCount() === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+    return root.listCount() === 13 && accounts.length === 4 && accounts.every((a) => a.status === "connected");
   }
 
   // checkPalette opens the command palette with Ctrl+/, closes it with
@@ -488,8 +488,8 @@ ShellRoot {
       return Check.fail("after choosing a contact in the new-chat dialog, Ctrl+2 gave " + root.listCount() + " rows, want 5");
 
     t.keyClick(Qt.Key_0, Qt.ControlModifier);
-    if (root.listCount() !== 12)
-      return Check.fail("after choosing a contact in the new-chat dialog, Ctrl+0 gave " + root.listCount() + " rows, want 12 (the original 11 plus the new conversation)");
+    if (root.listCount() !== 14)
+      return Check.fail("after choosing a contact in the new-chat dialog, Ctrl+0 gave " + root.listCount() + " rows, want 14 (the original 13 plus the new conversation)");
 
     return true;
   }

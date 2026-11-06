@@ -72,11 +72,11 @@ ShellRoot {
 
   function waitForConversations(): void {
     const listView = Check.find(panel, "conversationListView");
-    if (listView && listView.count === 11) return root.checkPaletteWithNothingOpen();
+    if (listView && listView.count === 13) return root.checkPaletteWithNothingOpen();
 
     stepper.attempts++;
     if (stepper.attempts >= 100)
-      return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
+      return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 13");
     stepper.retry(root.waitForConversations);
   }
 

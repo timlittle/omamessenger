@@ -42,8 +42,8 @@ ShellRoot {
   // the same wait tests/qml/OverlayLifecycle uses.
   function waitForList(): var {
     const accounts = helperService.accounts;
-    return Check.find(root.panel(), "conversationListView").count === 11
-      && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+    return Check.find(root.panel(), "conversationListView").count === 13
+      && accounts.length === 4 && accounts.every((a) => a.status === "connected");
   }
 
   // openPaletteAndTriggerError opens the command palette, so something

@@ -1,5 +1,5 @@
 // Checks the controllers against the real demo helper, started by
-// Service itself: the list loads 11 conversations, a rail filter command
+// Service itself: the list loads 13 conversations, a rail filter command
 // reaches the controller and persists the right key (which rows that key
 // keeps is Rail.js's and ListController's own job, proven elsewhere), the
 // cursor moves by id, pane.conversation reports it did nothing while no
@@ -123,11 +123,11 @@ ShellRoot {
   // waitForConversations retries while the demo connectors are still
   // seeding, the same race the Service test accounts for.
   function waitForConversations(): void {
-    if (listController.model.count === 11) return root.checkRailFilter();
+    if (listController.model.count === 13) return root.checkRailFilter();
 
     stepper.attempts++;
     if (stepper.attempts >= 100)
-      return Check.fail("got " + listController.model.count + " conversations after retrying, want 11");
+      return Check.fail("got " + listController.model.count + " conversations after retrying, want 13");
     stepper.retry(root.waitForConversations);
   }
 

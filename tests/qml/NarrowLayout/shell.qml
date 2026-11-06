@@ -17,7 +17,7 @@ ShellRoot {
   // waitForList holds until the demo conversations fill a full-width list
   // and no conversation column is shown.
   function waitForList(): var {
-    if (listController.model.count !== 11) return false;
+    if (listController.model.count !== 13) return false;
     return root.checkListOnly();
   }
 

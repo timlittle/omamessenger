@@ -146,7 +146,7 @@ ShellRoot {
   // conversations arrive.
   function waitForReady(): var {
     const list = Check.find(panel, "conversationListView");
-    return helperService.status === "ready" && list && list.count === 11;
+    return helperService.status === "ready" && list && list.count === 13;
   }
 
   Service {

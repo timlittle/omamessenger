@@ -33,7 +33,7 @@ ShellRoot {
 
   // waitForList holds until the demo conversations fill a full-width list.
   function waitForList(): var {
-    return listController.model.count === 11;
+    return listController.model.count === 13;
   }
 
   // checkListOnlyFields verifies the search field does not exist merely

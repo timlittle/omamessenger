@@ -85,10 +85,10 @@ ShellRoot {
     t.mouseClick(target, endX, endY);
   }
 
-  // waitForList holds until the fake accounts have seeded all 11 chats.
+  // waitForList holds until the fake accounts have seeded all 13 chats.
   function waitForList(): var {
     const listView = Check.find(root.panel(), "conversationListView");
-    return listView && listView.count === 11;
+    return listView && listView.count === 13;
   }
 
   // openMum jumps to Mum's chat with Ctrl+K, the conversation switcher.
