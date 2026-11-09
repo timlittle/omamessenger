@@ -272,28 +272,38 @@ Today a disappearing message from WhatsApp or Telegram is stored forever (WhatsA
 
 Status: planned, after the terminal client. The plugin lives inside Omarchy's shell and stays Linux-only, so on a Mac the terminal client is the only front end and the helper is what gets ported. The service connectors, the store and the JSON-RPC API are portable Go already; libsignal builds for macOS. Do the briefs in order; each ends with `make check` and `make ci` passing, and a run on a macOS CI runner once M1 exists.
 
+The port makes the helper OS-agnostic rather than adding a macOS branch beside Linux:
+
+- Paths come from configuration, never from code. Every directory (data, config, cache, runtime) and every external tool (ffmpeg, the sandbox runner, the opener, the clipboard command, the notifier) is a value in `config`, set from an environment variable or a flag, with a default for each OS supplied in one place (Go's `os.UserConfigDir` and `os.UserCacheDir` where they fit).
+- Behaviour goes through interfaces, chosen once in `main.go` (rules/di.md): `Sandbox`, `Opener`, `Clipboard`, `Notifier`, `PeerChecker`. Business packages never test which OS they are on: no `runtime.GOOS` checks outside `main.go`'s wiring.
+- System calls with no portable form (`Dup3`, seccomp, peer credentials) live in one small package behind build tags, the only build-tagged code, each file exposing the same function.
+
 ### M1 · Build and test on macOS
 
-- Split the Linux-only code behind build tags (`_linux.go` / `_darwin.go`), starting with `backend/stdout.go` (`Dup3`), the sandbox, notifications, the portal, the clipboard and the doctor. A darwin build of each starts as "not available", so the helper links and runs with those features off.
-- Data under `~/Library/Application Support/omamessenger` (0700, files 0600), not the XDG directories; `backend/config.go` picks by OS.
-- CI: a `macos-latest` job (Apple Silicon) builds libsignal and runs `go test -race` on the portable packages, with the same coverage gates. Linux jobs unchanged.
-- Accept: the helper builds on macOS, `--version` runs, and the connector, store, app and server tests pass on the macOS runner.
+- Move every hard-coded path and tool name into `config` (above), starting with `backend/config.go`'s XDG lookups, the sandbox's `bwrap`/`prlimit`/`ffmpeg` names, `wl-copy`, the portal and the notifier. Linux defaults stay exactly as they are today, so nothing changes on Linux.
+- Put the sandbox, opener, clipboard, notifier and doctor checks behind the interfaces above, injected from `main.go`. Until their macOS adapters exist, macOS wires an "unavailable" implementation, so the helper links and runs with those features off.
+- The portable-syscall package holds `stdout.go`'s descriptor redirect and the socket peer check.
+- macOS defaults: data under `~/Library/Application Support/omamessenger` (0700, files 0600).
+- CI: a `macos-latest` job (Apple Silicon) builds libsignal and runs `go test -race` on every package, with the same coverage gates. Linux jobs unchanged.
+- Accept: no `runtime.GOOS` outside `main.go`; every path and tool overridable by environment and documented in the README; the helper builds on macOS, `--version` runs, and all tests pass on the macOS runner.
 
 ### M2 · Media sandbox on macOS
 
 The hardest brief, and the one that decides whether video and voice notes play in the client at all. On Linux, ffmpeg runs inside bubblewrap with a seccomp filter and prlimit caps (see decisions.md); none of these exist on macOS.
 
 - Evaluate macOS's own sandbox (`sandbox-exec` with a Seatbelt profile: no network, read only the input, write only the one output file) plus `setrlimit` caps, against the security review's threat model. Write the comparison in decisions.md before any code: what each Linux protection maps to, and what has no equivalent.
-- If it holds: a `sandbox_darwin.go` with the same `Run` contract as Linux, and the transcode tests run on the macOS runner. If it does not: media on macOS opens in the system player only, and `playable` stays false there.
-- Accept: the decision recorded; either the sandboxed transcode passes the existing transcode tests on macOS, or `media.fetch` reports `playable:false` on macOS with a test.
+- If it holds: a Seatbelt implementation of the `Sandbox` interface, wired in `main.go`, and the transcode tests run on the macOS runner. If it does not: macOS wires no sandbox, media opens in the system player only, and `playable` stays false whenever no sandbox is configured, on any OS.
+- Accept: the decision recorded; either the sandboxed transcode passes the existing transcode tests on macOS, or `media.fetch` reports `playable:false` with no sandbox configured, with a test.
 
 ### M3 · Desktop integration
 
-- Opening links and files: `open` instead of the XDG portal, behind the same allow-lists `openexternal` uses on Linux.
-- Clipboard: `pbcopy` instead of `wl-copy`.
-- Notifications: `osascript` (`display notification`) first; native notifications need a signed app bundle, which waits for M5.
-- Local socket for the terminal client: `getpeereid` instead of `SO_PEERCRED`, and a per-user socket directory, since macOS has no `$XDG_RUNTIME_DIR`.
-- Doctor: report the macOS tools instead of the Linux ones.
+macOS adapters for the M1 interfaces, each a default in configuration rather than a branch in code:
+
+- Opener: `open`, behind the same allow-lists `openexternal` applies today.
+- Clipboard: `pbcopy` as the configured copy command.
+- Notifier: `osascript` (`display notification`) first; native notifications need a signed app bundle, which waits for M5.
+- Peer check for the terminal client's socket: `getpeereid`, in the build-tagged syscall package; the socket directory is a configured path, since macOS has no `$XDG_RUNTIME_DIR`.
+- Doctor: checks whichever tools the configuration names, so it needs no macOS list of its own.
 - Accept: each has a unit test through its existing seam; the manual check list covers a link, a copy and a notification on a real Mac.
 
 ### M4 · Release for macOS
