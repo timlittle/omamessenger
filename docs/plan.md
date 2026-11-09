@@ -268,6 +268,46 @@ Today a disappearing message from WhatsApp or Telegram is stored forever (WhatsA
 - Docs: README (setup, account risk, the S5 limit, "Don't transfer" means no history), `docs/shortcuts.md` (Ctrl+3, `s`), the example payloads in `docs/api.md`, the manual checks doc.
 - Accept: the offscreen QML tests cover a Signal account in the rail, its glyph and sound, and the setup flow; the flow has been tried in the installed plugin with a test account.
 
+## macOS
+
+Status: planned, after the terminal client. The plugin lives inside Omarchy's shell and stays Linux-only, so on a Mac the terminal client is the only front end and the helper is what gets ported. The service connectors, the store and the JSON-RPC API are portable Go already; libsignal builds for macOS. Do the briefs in order; each ends with `make check` and `make ci` passing, and a run on a macOS CI runner once M1 exists.
+
+### M1 · Build and test on macOS
+
+- Split the Linux-only code behind build tags (`_linux.go` / `_darwin.go`), starting with `backend/stdout.go` (`Dup3`), the sandbox, notifications, the portal, the clipboard and the doctor. A darwin build of each starts as "not available", so the helper links and runs with those features off.
+- Data under `~/Library/Application Support/omamessenger` (0700, files 0600), not the XDG directories; `backend/config.go` picks by OS.
+- CI: a `macos-latest` job (Apple Silicon) builds libsignal and runs `go test -race` on the portable packages, with the same coverage gates. Linux jobs unchanged.
+- Accept: the helper builds on macOS, `--version` runs, and the connector, store, app and server tests pass on the macOS runner.
+
+### M2 · Media sandbox on macOS
+
+The hardest brief, and the one that decides whether video and voice notes play in the client at all. On Linux, ffmpeg runs inside bubblewrap with a seccomp filter and prlimit caps (see decisions.md); none of these exist on macOS.
+
+- Evaluate macOS's own sandbox (`sandbox-exec` with a Seatbelt profile: no network, read only the input, write only the one output file) plus `setrlimit` caps, against the security review's threat model. Write the comparison in decisions.md before any code: what each Linux protection maps to, and what has no equivalent.
+- If it holds: a `sandbox_darwin.go` with the same `Run` contract as Linux, and the transcode tests run on the macOS runner. If it does not: media on macOS opens in the system player only, and `playable` stays false there.
+- Accept: the decision recorded; either the sandboxed transcode passes the existing transcode tests on macOS, or `media.fetch` reports `playable:false` on macOS with a test.
+
+### M3 · Desktop integration
+
+- Opening links and files: `open` instead of the XDG portal, behind the same allow-lists `openexternal` uses on Linux.
+- Clipboard: `pbcopy` instead of `wl-copy`.
+- Notifications: `osascript` (`display notification`) first; native notifications need a signed app bundle, which waits for M5.
+- Local socket for the terminal client: `getpeereid` instead of `SO_PEERCRED`, and a per-user socket directory, since macOS has no `$XDG_RUNTIME_DIR`.
+- Doctor: report the macOS tools instead of the Linux ones.
+- Accept: each has a unit test through its existing seam; the manual check list covers a link, a copy and a notification on a real Mac.
+
+### M4 · Release for macOS
+
+- `release.yml` gains `macos-latest` (arm64) and an Intel runner while GitHub offers one; libsignal built natively on each. The `ldd` check gets an `otool -L` counterpart allowing only system libraries.
+- Notices and AGPL licence as for Linux.
+- Accept: the release dry run produces both macOS binaries, each runs `--version` on its own architecture.
+
+### M5 · Signing and install
+
+- Code signing and notarization, so Gatekeeper accepts the binaries without a warning. Needs an Apple Developer account (a paid yearly membership) and its signing secrets in the release workflow.
+- An install path for macOS: a Homebrew tap, or the terminal client's own verified helper install (the same checksum and version pinning as `install-helper.sh`).
+- Accept: a fresh Mac installs the client and helper, links an account and sends a message, with no Gatekeeper prompt.
+
 ## After 0.3.0
 
 Ideas from comparing other Omarchy messaging plugins, not yet scheduled.
