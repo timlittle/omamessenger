@@ -59,8 +59,10 @@ type fakeDevice struct {
 	itemsByChat    map[uint64][]*backuppb.ChatItem
 	backupChatsErr error
 
-	downloadErr  error
-	downloadData []byte
+	downloadErr             error
+	downloadData            []byte
+	downloadedPointer       *signalpb.AttachmentPointer
+	downloadedPlaintextHash []byte
 
 	sentDirect    []sentDirectCall
 	sendDirectErr error
@@ -172,7 +174,9 @@ func (d *fakeDevice) backupChatItems(_ context.Context, chatID uint64, _ time.Ti
 	return items, nil
 }
 
-func (d *fakeDevice) downloadAttachment(_ context.Context, _ *signalpb.AttachmentPointer, file *os.File) error {
+func (d *fakeDevice) downloadAttachment(_ context.Context, ptr *signalpb.AttachmentPointer, plaintextHash []byte, file *os.File) error {
+	d.downloadedPointer = ptr
+	d.downloadedPlaintextHash = plaintextHash
 	if d.downloadErr != nil {
 		return d.downloadErr
 	}

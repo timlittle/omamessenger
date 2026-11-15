@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS attachment_refs (
 	size            INTEGER NOT NULL,
 	content_type    TEXT NOT NULL DEFAULT '',
 	file_name       TEXT NOT NULL DEFAULT '',
+	plaintext_hash  BLOB NOT NULL DEFAULT '',
 	PRIMARY KEY (conversation_id, message_id)
 );
 CREATE TABLE IF NOT EXISTS message_meta (
@@ -104,7 +105,45 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 		return nil, fmt.Errorf("signal: prepare media store: %w", err)
 	}
 
+	if err := ensurePlaintextHashColumn(ctx, db); err != nil {
+		_ = db.Close() // the database could not be upgraded; nothing to flush
+		return nil, err
+	}
+
 	return &mediaStore{db: db}, nil
+}
+
+// ensurePlaintextHashColumn adds attachment_refs.plaintext_hash to a
+// database created before that column existed; a freshly created one
+// already has it from mediaStoreSchema's own CREATE TABLE.
+func ensurePlaintextHashColumn(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(attachment_refs)`)
+	if err != nil {
+		return fmt.Errorf("signal: inspect attachment table: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			return fmt.Errorf("signal: inspect attachment table: %w", err)
+		}
+		if name == "plaintext_hash" {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("signal: inspect attachment table: %w", err)
+	}
+
+	const alter = `ALTER TABLE attachment_refs ADD COLUMN plaintext_hash BLOB NOT NULL DEFAULT ''`
+	if _, err := db.ExecContext(ctx, alter); err != nil {
+		return fmt.Errorf("signal: add plaintext hash column: %w", err)
+	}
+
+	return nil
 }
 
 // mediaStorePath is where an account's media store lives.
@@ -119,21 +158,24 @@ func (m *mediaStore) close() error {
 
 // putAttachment saves ptr as the attachment behind messageRemoteID in
 // conversationRemoteID, replacing whatever was saved before.
-func (m *mediaStore) putAttachment(ctx context.Context, conversationRemoteID, messageRemoteID string, ptr *signalpb.AttachmentPointer) error {
+// plaintextHash is a backup history import's own integrity check,
+// used instead of ptr's digest when that is how the backup verified
+// it (see backupmedia.go); live attachments pass nil.
+func (m *mediaStore) putAttachment(ctx context.Context, conversationRemoteID, messageRemoteID string, ptr *signalpb.AttachmentPointer, plaintextHash []byte) error {
 	const q = `INSERT INTO attachment_refs
-		(conversation_id, message_id, cdn_id, cdn_key, cdn_number, enc_key, digest, size, content_type, file_name)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(conversation_id, message_id, cdn_id, cdn_key, cdn_number, enc_key, digest, size, content_type, file_name, plaintext_hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET
 			cdn_id = excluded.cdn_id, cdn_key = excluded.cdn_key, cdn_number = excluded.cdn_number,
 			enc_key = excluded.enc_key, digest = excluded.digest, size = excluded.size,
-			content_type = excluded.content_type, file_name = excluded.file_name`
+			content_type = excluded.content_type, file_name = excluded.file_name, plaintext_hash = excluded.plaintext_hash`
 
-	// A nil key or digest would insert SQL NULL into a NOT NULL blob
-	// column; emptyBytes keeps a pointer missing one, such as a test
+	// A nil key, digest or hash would insert SQL NULL into a NOT NULL
+	// blob column; emptyBytes keeps one missing, such as a test
 	// fixture, storable without weakening the real column constraint.
 	_, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID,
 		ptr.GetCdnId(), ptr.GetCdnKey(), ptr.GetCdnNumber(), emptyBytes(ptr.GetKey()), emptyBytes(ptr.GetDigest()), ptr.GetSize(),
-		ptr.GetContentType(), ptr.GetFileName())
+		ptr.GetContentType(), ptr.GetFileName(), emptyBytes(plaintextHash))
 	if err != nil {
 		return fmt.Errorf("signal: save attachment: %w", err)
 	}
@@ -151,34 +193,49 @@ func emptyBytes(b []byte) []byte {
 	return b
 }
 
-// attachment returns the attachment pointer saved for a message, or
-// found false when none was saved for it.
-func (m *mediaStore) attachment(ctx context.Context, conversationRemoteID, messageRemoteID string) (*signalpb.AttachmentPointer, bool, error) {
-	const q = `SELECT cdn_id, cdn_key, cdn_number, enc_key, digest, size, content_type, file_name
+// attachment returns the attachment pointer saved for a message and
+// its plaintext hash, when that is how it was verified rather than a
+// digest (see backupmedia.go), or found false when none was saved.
+func (m *mediaStore) attachment(ctx context.Context, conversationRemoteID, messageRemoteID string) (*signalpb.AttachmentPointer, []byte, bool, error) {
+	const q = `SELECT cdn_id, cdn_key, cdn_number, enc_key, digest, size, content_type, file_name, plaintext_hash
 		FROM attachment_refs WHERE conversation_id = ? AND message_id = ?`
 
 	var ptr signalpb.AttachmentPointer
 	var cdnID, cdnNumber, size uint32
 	var cdnKey, contentType, fileName string
-	var key, digest []byte
+	var key, digest, plaintextHash []byte
 
 	row := m.db.QueryRowContext(ctx, q, conversationRemoteID, messageRemoteID)
-	err := row.Scan(&cdnID, &cdnKey, &cdnNumber, &key, &digest, &size, &contentType, &fileName)
+	err := row.Scan(&cdnID, &cdnKey, &cdnNumber, &key, &digest, &size, &contentType, &fileName, &plaintextHash)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("signal: load attachment: %w", err)
+		return nil, nil, false, fmt.Errorf("signal: load attachment: %w", err)
 	}
 
 	ptr.AttachmentIdentifier = &signalpb.AttachmentPointer_CdnKey{CdnKey: cdnKey}
 	if cdnID != 0 {
 		ptr.AttachmentIdentifier = &signalpb.AttachmentPointer_CdnId{CdnId: uint64(cdnID)}
 	}
-	ptr.Key, ptr.Digest, ptr.Size = key, digest, &size
+	// An empty digest or hash came back from emptyBytes turning a nil
+	// write into a storable blob (see putAttachment); nil-ing it back
+	// out here keeps the "which integrity check was used" distinction
+	// DownloadAttachmentWithPointer makes on a nil digest.
+	ptr.Key, ptr.Digest, ptr.Size = key, nilIfEmpty(digest), &size
 	ptr.CdnNumber, ptr.ContentType, ptr.FileName = &cdnNumber, &contentType, &fileName
 
-	return &ptr, true, nil
+	return &ptr, nilIfEmpty(plaintextHash), true, nil
+}
+
+// nilIfEmpty turns an empty, non-nil slice back into nil, undoing
+// emptyBytes for a value a caller tells "set" from "nil" apart by.
+func nilIfEmpty(b []byte) []byte {
+	if len(b) == 0 {
+		return nil
+	}
+
+	return b
 }
 
 // putMessageMeta saves a message's server GUID and report-spam token,

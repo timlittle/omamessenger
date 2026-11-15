@@ -1,11 +1,13 @@
 package signal
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/google/uuid"
+	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/backuppb"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/signalpb"
 	"google.golang.org/protobuf/proto"
 
@@ -100,6 +102,67 @@ func TestFetchMedia_SurvivesARestart(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_UsesPlaintextHash checks that a backup-imported
+// attachment verified by plaintext hash (rather than a digest) reaches
+// the device's download with that hash, not a digest, and with the
+// pointer's own transit fields intact.
+func TestFetchMedia_UsesPlaintextHash(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice(uuid.New())
+	dev.downloadData = []byte("plaintext bytes")
+	media := newTestMediaStore(t)
+	c := newTestConnector(dev)
+	c.connected(dev, &connectortest.Sink{}, media)
+
+	att := &backuppb.MessageAttachment{Pointer: &backuppb.FilePointer{
+		ContentType: proto.String("image/jpeg"),
+		LocatorInfo: &backuppb.FilePointer_LocatorInfo{
+			Key: []byte{1, 2, 3}, Size: 16,
+			TransitCdnKey: proto.String("transit-key"), TransitCdnNumber: proto.Uint32(2),
+			IntegrityCheck: &backuppb.FilePointer_LocatorInfo_PlaintextHash{PlaintextHash: []byte{9, 9, 9}},
+		},
+	}}
+	c.rememberBackupAttachment(t.Context(), "conv1", "msg1", att)
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), domain.Conversation{RemoteID: "conv1"}, "msg1", path, false); err != nil {
+		t.Fatalf("FetchMedia() error = %v", err)
+	}
+
+	if dev.downloadedPointer.GetCdnKey() != "transit-key" || dev.downloadedPointer.GetCdnNumber() != 2 {
+		t.Errorf("downloaded pointer = %+v", dev.downloadedPointer)
+	}
+	if string(dev.downloadedPlaintextHash) != "\x09\x09\x09" {
+		t.Errorf("downloaded plaintext hash = %v, want {9,9,9}", dev.downloadedPlaintextHash)
+	}
+}
+
+// TestFetchMedia_MediaTierOnlyReportsUnavailable checks that a backup
+// attachment with no transit-tier copy (older history past Signal's
+// transit window, or media-tier-only) reports the same "not yet
+// implemented" error FetchMedia gives an unknown message, rather than
+// panicking on a pointer that was never remembered.
+func TestFetchMedia_MediaTierOnlyReportsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice(uuid.New())
+	media := newTestMediaStore(t)
+	c := newTestConnector(dev)
+	c.connected(dev, &connectortest.Sink{}, media)
+
+	att := &backuppb.MessageAttachment{Pointer: &backuppb.FilePointer{
+		ContentType: proto.String("image/jpeg"),
+		LocatorInfo: &backuppb.FilePointer_LocatorInfo{MediaTierCdnNumber: proto.Uint32(4)},
+	}}
+	c.rememberBackupAttachment(t.Context(), "conv1", "msg1", att)
+
+	err := c.FetchMedia(t.Context(), domain.Conversation{RemoteID: "conv1"}, "msg1", filepath.Join(t.TempDir(), "out"), false)
+	if !errors.Is(err, errNotImplemented) {
+		t.Errorf("FetchMedia() error = %v, want errNotImplemented", err)
+	}
+}
+
 // TestRememberAttachment_NoMediaStore checks that remembering an
 // attachment with no media store wired in is a harmless no-op, rather
 // than panicking.
@@ -109,7 +172,7 @@ func TestRememberAttachment_NoMediaStore(t *testing.T) {
 	c := &Connector{}
 	c.rememberAttachment(t.Context(), "conv1", "msg1", &signalpb.AttachmentPointer{})
 
-	if got := c.attachmentFor(t.Context(), "conv1", "msg1"); got != nil {
+	if got, _ := c.attachmentFor(t.Context(), "conv1", "msg1"); got != nil {
 		t.Errorf("attachmentFor() = %+v, want nil with no media store", got)
 	}
 }

@@ -123,7 +123,7 @@ func TestNormalizeBackupItem_StandardMessage(t *testing.T) {
 		Item:        &backuppb.ChatItem_StandardMessage{StandardMessage: &backuppb.StandardMessage{Text: &backuppb.Text{Body: "hello"}}},
 	}
 
-	m, ok := c.normalizeBackupItem(t.Context(), dev, item)
+	m, ok := c.normalizeBackupItem(t.Context(), dev, "conv1", item)
 	if !ok {
 		t.Fatal("normalizeBackupItem() reported not ok for a standard message")
 	}
@@ -145,7 +145,7 @@ func TestNormalizeBackupItem_UnsupportedKind(t *testing.T) {
 	c := newTestConnector(dev)
 
 	item := &backuppb.ChatItem{AuthorId: 1, Item: &backuppb.ChatItem_GiftBadge{}}
-	if _, ok := c.normalizeBackupItem(t.Context(), dev, item); ok {
+	if _, ok := c.normalizeBackupItem(t.Context(), dev, "conv1", item); ok {
 		t.Error("normalizeBackupItem() imported a gift badge item")
 	}
 }
@@ -389,7 +389,7 @@ func TestNormalizeBackupItem_UnresolvableAuthor(t *testing.T) {
 		AuthorId: 1,
 		Item:     &backuppb.ChatItem_StandardMessage{StandardMessage: &backuppb.StandardMessage{Text: &backuppb.Text{Body: "hi"}}},
 	}
-	if _, ok := c.normalizeBackupItem(t.Context(), dev, item); ok {
+	if _, ok := c.normalizeBackupItem(t.Context(), dev, "conv1", item); ok {
 		t.Error("normalizeBackupItem() resolved an unaddressable author")
 	}
 }

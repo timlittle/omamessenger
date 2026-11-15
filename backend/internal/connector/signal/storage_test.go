@@ -76,7 +76,7 @@ func TestAttachment_PutThenGetRoundTrips(t *testing.T) {
 		ContentType:          proto.String("image/jpeg"),
 		FileName:             proto.String("photo.jpg"),
 	}
-	if err := store.putAttachment(t.Context(), "conv-1", "msg-1", ptr); err != nil {
+	if err := store.putAttachment(t.Context(), "conv-1", "msg-1", ptr, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.close(); err != nil {
@@ -89,7 +89,7 @@ func TestAttachment_PutThenGetRoundTrips(t *testing.T) {
 	}
 	defer func() { _ = reopened.close() }()
 
-	got, found, err := reopened.attachment(t.Context(), "conv-1", "msg-1")
+	got, _, found, err := reopened.attachment(t.Context(), "conv-1", "msg-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,12 +101,46 @@ func TestAttachment_PutThenGetRoundTrips(t *testing.T) {
 	}
 }
 
+// TestAttachment_PlaintextHashRoundTrips checks that an attachment
+// saved with a plaintext hash instead of a digest (a backup history
+// import's own integrity check) comes back with no digest and the
+// same hash, rather than mixing the two checks up.
+func TestAttachment_PlaintextHashRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	store := newTestMediaStore(t)
+
+	ptr := &signalpb.AttachmentPointer{
+		AttachmentIdentifier: &signalpb.AttachmentPointer_CdnKey{CdnKey: "transit-key"},
+		Key:                  []byte{1, 2, 3},
+		Size:                 proto.Uint32(9),
+		ContentType:          proto.String("image/jpeg"),
+	}
+	if err := store.putAttachment(t.Context(), "conv-1", "msg-1", ptr, []byte{7, 7, 7}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, hash, found, err := store.attachment(t.Context(), "conv-1", "msg-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("attachment() reported not found")
+	}
+	if got.GetDigest() != nil {
+		t.Errorf("Digest = %v, want none when the backup verified by plaintext hash", got.GetDigest())
+	}
+	if string(hash) != "\x07\x07\x07" {
+		t.Errorf("plaintext hash = %v, want {7,7,7}", hash)
+	}
+}
+
 func TestAttachment_UnknownMessageNotFound(t *testing.T) {
 	t.Parallel()
 
 	store := newTestMediaStore(t)
 
-	_, found, err := store.attachment(t.Context(), "conv-1", "missing")
+	_, _, found, err := store.attachment(t.Context(), "conv-1", "missing")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,10 +300,10 @@ func TestMediaStore_ClosedDatabaseErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.putAttachment(t.Context(), "c", "m", &signalpb.AttachmentPointer{}); err == nil {
+	if err := store.putAttachment(t.Context(), "c", "m", &signalpb.AttachmentPointer{}, nil); err == nil {
 		t.Error("putAttachment() on a closed store succeeded")
 	}
-	if _, _, err := store.attachment(t.Context(), "c", "m"); err == nil {
+	if _, _, _, err := store.attachment(t.Context(), "c", "m"); err == nil {
 		t.Error("attachment() on a closed store succeeded")
 	}
 	if err := store.putMessageMeta(t.Context(), "c", "m", "g", nil); err == nil {

@@ -23,29 +23,35 @@ func (c *Connector) rememberAttachment(ctx context.Context, conversationRemoteID
 		return
 	}
 
-	_ = media.putAttachment(ctx, conversationRemoteID, messageRemoteID, ptr)
+	_ = media.putAttachment(ctx, conversationRemoteID, messageRemoteID, ptr, nil)
 }
 
 // attachmentFor returns the attachment pointer saved for
-// conversationRemoteID's messageRemoteID, or nil when none was.
-func (c *Connector) attachmentFor(ctx context.Context, conversationRemoteID, messageRemoteID string) *signalpb.AttachmentPointer {
+// conversationRemoteID's messageRemoteID and its plaintext hash, when
+// that is how a backup history import verified it (see
+// backupmedia.go), or a nil pointer when none was saved.
+func (c *Connector) attachmentFor(ctx context.Context, conversationRemoteID, messageRemoteID string) (*signalpb.AttachmentPointer, []byte) {
 	media := c.mediaFor()
 	if media == nil {
-		return nil
+		return nil, nil
 	}
 
-	ptr, found, err := media.attachment(ctx, conversationRemoteID, messageRemoteID)
+	ptr, plaintextHash, found, err := media.attachment(ctx, conversationRemoteID, messageRemoteID)
 	if err != nil || !found {
-		return nil
+		return nil, nil
 	}
 
-	return ptr
+	return ptr, plaintextHash
 }
 
 // FetchMedia downloads and decrypts messageRemoteID's attachment to
 // path. auto is unused: Signal attachments need no separate limit.
+// A message imported from history with no transit-tier copy at all
+// (older or media-tier-only backups) was never remembered with a
+// pointer, so it reports the same "not yet implemented" error as an
+// unknown message, rather than panicking on a nil pointer.
 func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, _ bool) error {
-	ptr := c.attachmentFor(ctx, conv.RemoteID, messageRemoteID)
+	ptr, plaintextHash := c.attachmentFor(ctx, conv.RemoteID, messageRemoteID)
 	if ptr == nil {
 		return fmt.Errorf("signal: fetch media: %w", errNotImplemented)
 	}
@@ -61,7 +67,7 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 	}
 	defer func() { _ = file.Close() }() // the download below is what matters; a close failure changes nothing
 
-	if err := dev.downloadAttachment(ctx, ptr, file); err != nil {
+	if err := dev.downloadAttachment(ctx, ptr, plaintextHash, file); err != nil {
 		return fmt.Errorf("signal: fetch media: %w", err)
 	}
 

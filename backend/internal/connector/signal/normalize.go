@@ -102,14 +102,23 @@ func attachmentMedia(ptr *signalpb.AttachmentPointer) *domain.Media {
 // attachmentKind decides a domain media kind from an attachment
 // pointer's content type and flags.
 func attachmentKind(ptr *signalpb.AttachmentPointer) string {
-	if hasFlag(ptr.GetFlags(), uint32(signalpb.AttachmentPointer_VOICE_MESSAGE)) {
+	voice := hasFlag(ptr.GetFlags(), uint32(signalpb.AttachmentPointer_VOICE_MESSAGE))
+	return mediaKindForContentType(ptr.GetContentType(), voice)
+}
+
+// mediaKindForContentType is attachmentKind's own decision rule,
+// shared with the backup importer (see backupmedia.go), whose
+// attachments carry the same voice flag and content type under a
+// different wire type.
+func mediaKindForContentType(contentType string, voice bool) string {
+	if voice {
 		return domain.MediaVoice
 	}
 
 	switch {
-	case startsWith(ptr.GetContentType(), "image/"):
+	case startsWith(contentType, "image/"):
 		return domain.MediaPhoto
-	case startsWith(ptr.GetContentType(), "video/"):
+	case startsWith(contentType, "video/"):
 		return domain.MediaVideo
 	default:
 		return domain.MediaFile

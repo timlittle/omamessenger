@@ -79,7 +79,7 @@ func (c *Connector) importChat(ctx context.Context, dev device, sink connector.S
 	}
 
 	for _, item := range items {
-		if m, ok := c.normalizeBackupItem(ctx, dev, item); ok {
+		if m, ok := c.normalizeBackupItem(ctx, dev, remoteID, item); ok {
 			sink.History(ctx, c.account.ID, remoteID, m)
 		}
 	}
@@ -111,7 +111,7 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, bef
 
 	found := 0
 	for _, item := range items {
-		if m, ok := c.normalizeBackupItem(ctx, dev, item); ok {
+		if m, ok := c.normalizeBackupItem(ctx, dev, conv.RemoteID, item); ok {
 			sink.History(ctx, c.account.ID, conv.RemoteID, m)
 			found++
 		}
@@ -228,7 +228,7 @@ func joinName(given, family string) string {
 
 // normalizeBackupItem maps one transferred message to a domain
 // message, or ok false for an item kind not imported yet.
-func (c *Connector) normalizeBackupItem(ctx context.Context, dev device, item *backuppb.ChatItem) (domain.Message, bool) {
+func (c *Connector) normalizeBackupItem(ctx context.Context, dev device, conversationRemoteID string, item *backuppb.ChatItem) (domain.Message, bool) {
 	standard, ok := item.GetItem().(*backuppb.ChatItem_StandardMessage)
 	if !ok || standard.StandardMessage == nil {
 		return domain.Message{}, false
@@ -261,6 +261,9 @@ func (c *Connector) normalizeBackupItem(ctx context.Context, dev device, item *b
 		m.ExpireAfter = int64(*ms / 1000)
 		m.ArmOnRead = !outgoing
 	}
+
+	att := applyBackupMedia(&m, standard.StandardMessage)
+	c.rememberBackupAttachment(ctx, conversationRemoteID, m.RemoteID, att)
 
 	return m, true
 }

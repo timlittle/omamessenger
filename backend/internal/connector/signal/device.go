@@ -79,8 +79,10 @@ type device interface {
 	backupChatItems(ctx context.Context, chatID uint64, anchor time.Time, forward bool, limit int) ([]*backuppb.ChatItem, error)
 
 	// downloadAttachment downloads and decrypts an attachment straight
-	// into file.
-	downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, file *os.File) error
+	// into file. plaintextHash is checked instead of ptr's own digest
+	// when a backup history import verified it that way (see
+	// backupmedia.go); a live attachment passes nil.
+	downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, plaintextHash []byte, file *os.File) error
 
 	// sendDirect sends content to recipient's own account, as a
 	// one-to-one message or a sync copy to this device's own account.
@@ -191,8 +193,8 @@ func (d *sigDevice) backupChatItems(ctx context.Context, chatID uint64, anchor t
 }
 
 // downloadAttachment downloads and decrypts an attachment into file.
-func (*sigDevice) downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, file *os.File) error {
-	_, err := signalmeow.DownloadAttachmentWithPointer(ctx, ptr, nil, file)
+func (*sigDevice) downloadAttachment(ctx context.Context, ptr *signalpb.AttachmentPointer, plaintextHash []byte, file *os.File) error {
+	_, err := signalmeow.DownloadAttachmentWithPointer(ctx, ptr, plaintextHash, file)
 	return err
 }
 
