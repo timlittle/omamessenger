@@ -179,24 +179,30 @@ func (c *Connector) resolveChatIdentity(ctx context.Context, dev device, recipie
 	case *backuppb.Recipient_Self:
 		return senderRemoteID(c.selfID()), domain.KindDirect, noteToSelfTitle, true
 	case *backuppb.Recipient_Group:
-		// SerializedGroupMasterKey is base64 text, not raw bytes cast to
-		// a string (signalmeow's own masterKeyToBytes decodes it that
-		// way); the backup protobuf's masterKey field is raw bytes.
-		masterKey := base64.StdEncoding.EncodeToString(dest.Group.GetMasterKey())
-		gid, err := dev.groupIdentifierForMasterKey(ctx, types.SerializedGroupMasterKey(masterKey))
-		if err != nil {
-			return "", "", "", false
-		}
-
-		title := dest.Group.GetSnapshot().GetTitle().GetTitle()
-		if title == "" {
-			title = genericGroupTitle
-		}
-
-		return string(gid), domain.KindGroup, title, true
+		return resolveGroupIdentity(ctx, dev, dest.Group)
 	default:
 		return "", "", "", false
 	}
+}
+
+// resolveGroupIdentity is resolveChatIdentity's own case for a group
+// recipient, kept apart from it to stay under the complexity limit.
+func resolveGroupIdentity(ctx context.Context, dev device, group *backuppb.Group) (remoteID, kind, title string, ok bool) {
+	// SerializedGroupMasterKey is base64 text, not raw bytes cast to a
+	// string (signalmeow's own masterKeyToBytes decodes it that way);
+	// the backup protobuf's masterKey field is raw bytes.
+	masterKey := base64.StdEncoding.EncodeToString(group.GetMasterKey())
+	gid, err := dev.groupIdentifierForMasterKey(ctx, types.SerializedGroupMasterKey(masterKey))
+	if err != nil {
+		return "", "", "", false
+	}
+
+	title = group.GetSnapshot().GetTitle().GetTitle()
+	if title == "" {
+		title = genericGroupTitle
+	}
+
+	return string(gid), domain.KindGroup, title, true
 }
 
 // backupContactTitle prefers the name saved in the phone's contacts,
