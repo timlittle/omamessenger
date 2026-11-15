@@ -738,3 +738,8 @@ func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID,
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+// realIngest and its own fixtures, for a test that drives a real
+// app.Ingest over a real store instead of connectortest.Sink, live in
+// ingest_helpers_test.go, split out of this file to keep neither past
+// the project's own file-length limit.

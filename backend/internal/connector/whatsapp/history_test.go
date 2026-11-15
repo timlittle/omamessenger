@@ -488,3 +488,34 @@ func TestHandleHistorySync_ReportsANonZeroDisappearingTimer(t *testing.T) {
 		t.Errorf("events = %q, want the synced disappearing timer reported", sink.Lines())
 	}
 }
+
+// TestHandleHistorySync_StoresAMessageThroughARealStore drives a chat
+// imported from WhatsApp's own history sync - distinct from a live
+// message - through a real app.Ingest over a real store, so this proves
+// an imported chat and its message are actually kept, not just recorded
+// by connectortest.Sink's own simplified bookkeeping (see realIngest's
+// own doc comment).
+func TestHandleHistorySync_StoresAMessageThroughARealStore(t *testing.T) {
+	t.Parallel()
+
+	c, dev, ingest, media := realHandlerFixture(t)
+
+	conv := &waHistorySync.Conversation{
+		ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi from the sync", false)},
+	}
+	c.handleHistorySync(t.Context(), ingest, dev, media, historySyncEvent(conv))
+
+	stored, err := ingest.store.ConversationByRemote(t.Context(), realAccountID, "15551234567@s.whatsapp.net")
+	if err != nil {
+		t.Fatalf("ConversationByRemote() = %v", err)
+	}
+	if stored.Title != "Nadia" {
+		t.Errorf("conversation title = %q, want %q", stored.Title, "Nadia")
+	}
+
+	messages, _, err := ingest.store.Messages(t.Context(), stored.ID, "", 10)
+	if err != nil || len(messages) != 1 || messages[0].Text != "hi from the sync" {
+		t.Fatalf("messages = %+v, %v; want the synced message stored", messages, err)
+	}
+}

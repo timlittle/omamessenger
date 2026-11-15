@@ -434,6 +434,12 @@ func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 	assertTally(1)
 }
 
+// TestHandleMessage_StoresAMessageFromAnUnnamedSender, the other
+// real-store end-to-end cases for this file's handlers, and
+// TestReportContent_BeforeConversationReported_DropsAndLogs all live in
+// live_realstore_test.go, split out to stay under this file's own
+// length limit.
+
 // TestHandleMessage_RevokeAndEdit, the forged-sender cases from Vuln 1
 // and the other handleRevoke/handleEdit authorization tests live in
 // live_revoke_edit_test.go, split out to stay under this file's own
