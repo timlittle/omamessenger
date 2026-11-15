@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // upgradeSink wraps connectortest.Sink with a RemoteIDUpgrader, the
@@ -300,5 +301,48 @@ func TestHandleEvent_Unhandled(t *testing.T) {
 
 	if ok := c.handleEvent(t.Context(), &connectortest.Sink{}, &events.LoggedOut{}); !ok {
 		t.Error("handleEvent() = false for an unhandled event, want true")
+	}
+}
+
+// TestHandleEvent_PhotoWithoutCaption checks a live photo sent with no
+// caption is kept, with its placeholder text, rather than dropped.
+func TestHandleEvent_PhotoWithoutCaption(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	msg := &signalpb.DataMessage{
+		Timestamp:   proto.Uint64(1),
+		Attachments: []*signalpb.AttachmentPointer{{ContentType: proto.String("image/jpeg")}},
+	}
+	c.handleEvent(t.Context(), sink, &events.ChatEvent{Info: info, Event: msg})
+
+	live := sink.LiveMessages()[sender.String()]
+	if len(live) != 1 || live[0].Media == nil || live[0].Text != domain.MediaPlaceholder(domain.MediaPhoto) {
+		t.Errorf("live messages = %+v, want the photo kept", live)
+	}
+}
+
+// TestHandleEvent_BareTimerChange checks a timer change with no content
+// reports the chat's timer but no empty message.
+func TestHandleEvent_BareTimerChange(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	msg := &signalpb.DataMessage{Timestamp: proto.Uint64(1), ExpireTimer: proto.Uint32(60)}
+	c.handleEvent(t.Context(), sink, &events.ChatEvent{Info: info, Event: msg})
+
+	if live := sink.LiveMessages()[sender.String()]; len(live) != 0 {
+		t.Errorf("live messages = %+v, want none", live)
+	}
+	if !sink.Has("timer " + sender.String() + " 60") {
+		t.Errorf("timer not reported: %v", sink.Lines())
 	}
 }

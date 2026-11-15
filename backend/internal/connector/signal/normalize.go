@@ -49,8 +49,31 @@ func normalizeDataMessage(aci uuid.UUID, senderName string, sentTimestamp uint64
 	}
 
 	ptr := applyMedia(&m, msg)
+	if m.Text == "" {
+		m.Text = placeholderText(m, msg)
+	}
 
 	return m, ptr
+}
+
+// placeholderText is the text a message with no body of its own gets:
+// the store requires text, so without one the message is dropped.
+func placeholderText(m domain.Message, msg *signalpb.DataMessage) string {
+	var kind string
+	if attachments := msg.GetAttachments(); len(attachments) > 0 {
+		kind = attachmentKind(attachments[0])
+	}
+
+	switch {
+	case m.ViewOnce:
+		return domain.ViewOncePlaceholder(kind)
+	case m.Media == nil:
+		return "" // nothing to show, such as a bare timer change
+	case m.Media.Kind == domain.MediaPoll && m.Media.Poll.Question != "":
+		return m.Media.Poll.Question
+	default:
+		return domain.MediaPlaceholder(m.Media.Kind)
+	}
 }
 
 // applyMedia fills m's Media or ViewOnce flag from msg's one

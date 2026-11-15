@@ -113,6 +113,9 @@ func TestNormalizeDataMessage_Attachment(t *testing.T) {
 	if got.Media.Width != 100 || got.Media.Height != 50 || got.Media.Size != 1024 {
 		t.Errorf("Media dimensions/size = %+v", got.Media)
 	}
+	if got.Text != domain.MediaPlaceholder(domain.MediaPhoto) {
+		t.Errorf("Text = %q, want the photo placeholder the store needs", got.Text)
+	}
 	if ptr == nil {
 		t.Error("ptr = nil, want the attachment pointer kept for FetchMedia")
 	}
@@ -160,6 +163,37 @@ func TestNormalizeDataMessage_Sticker(t *testing.T) {
 	}
 	if ptr == nil {
 		t.Error("ptr = nil, want the sticker's attachment pointer kept")
+	}
+}
+
+// TestNormalizeDataMessage_PlaceholderText checks a message with no
+// body of its own still gets text, which the store requires of every
+// message; without it the message is dropped.
+func TestNormalizeDataMessage_PlaceholderText(t *testing.T) {
+	t.Parallel()
+
+	video := &signalpb.AttachmentPointer{ContentType: proto.String("video/mp4")}
+	tests := []struct {
+		name string
+		msg  *signalpb.DataMessage
+		want string
+	}{
+		{"caption kept", &signalpb.DataMessage{Body: proto.String("look"), Attachments: []*signalpb.AttachmentPointer{video}}, "look"},
+		{"video", &signalpb.DataMessage{Attachments: []*signalpb.AttachmentPointer{video}}, domain.MediaPlaceholder(domain.MediaVideo)},
+		{"sticker", &signalpb.DataMessage{Sticker: &signalpb.DataMessage_Sticker{Data: &signalpb.AttachmentPointer{}}}, domain.MediaPlaceholder(domain.MediaSticker)},
+		{"view-once video", &signalpb.DataMessage{IsViewOnce: proto.Bool(true), Attachments: []*signalpb.AttachmentPointer{video}}, domain.ViewOncePlaceholder(domain.MediaVideo)},
+		{"poll", &signalpb.DataMessage{PollCreate: &signalpb.DataMessage_PollCreate{Question: proto.String("Lunch?")}}, "Lunch?"},
+		{"bare timer change", &signalpb.DataMessage{ExpireTimer: proto.Uint32(60)}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, _ := normalizeDataMessage(aci, "Alice", 1, tt.msg, false)
+			if got.Text != tt.want {
+				t.Errorf("Text = %q, want %q", got.Text, tt.want)
+			}
+		})
 	}
 }
 

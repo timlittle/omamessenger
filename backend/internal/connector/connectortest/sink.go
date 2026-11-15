@@ -151,6 +151,10 @@ func (s *Sink) Incoming(_ context.Context, _, remote string, m domain.Message) {
 		s.record("incoming %s rejected: invalid id", remote)
 		return
 	}
+	if !domain.HasText(m) {
+		s.record("incoming %s rejected: no text", remote)
+		return
+	}
 
 	s.record("incoming %s %s", remote, m.RemoteID)
 
@@ -180,6 +184,10 @@ func (s *Sink) LiveMessages() map[string][]domain.Message {
 func (s *Sink) History(_ context.Context, _, remote string, m domain.Message) {
 	if !domain.ValidMessageIDs(m) {
 		s.record("history %s rejected: invalid id", remote)
+		return
+	}
+	if !domain.HasText(m) {
+		s.record("history %s rejected: no text", remote)
 		return
 	}
 

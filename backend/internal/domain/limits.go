@@ -111,6 +111,12 @@ func ValidMessageIDs(m Message) bool {
 	return len(m.RemoteID) <= MaxRemoteIDLength && len(m.SenderID) <= MaxRemoteIDLength
 }
 
+// HasText reports whether m has the text the store requires of every
+// message; a connector gives a media-only message a placeholder.
+func HasText(m Message) bool {
+	return m.Text != ""
+}
+
 // ValidConversation reports whether c carries everything the store
 // needs to keep it, and every later message for it: an account id, a
 // remote id and a title. store.EnsureConversation and

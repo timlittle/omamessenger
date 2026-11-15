@@ -84,6 +84,10 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, info
 		c.trackPoll(ctx, info.ChatID, m.RemoteID, newPoll{question: poll.GetQuestion(), options: options, multipleChoice: poll.GetAllowMultiple()})
 	}
 
+	if m.Text == "" {
+		return // a bare timer change or profile update shows nothing
+	}
+
 	if outgoing {
 		sink.History(ctx, c.account.ID, info.ChatID, m)
 		return

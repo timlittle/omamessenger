@@ -51,7 +51,7 @@ func (s *Store) AddHistoryMessage(ctx context.Context, m domain.Message) (_ doma
 // message already past its own disappearing timer is dropped instead of
 // stored (see AddHistoryMessage).
 func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread, skipAlreadyExpired bool) (_ domain.Message, inserted bool, _ error) {
-	if m.ConversationID == "" || m.Text == "" {
+	if m.ConversationID == "" || !domain.HasText(m) {
 		return m, false, fmt.Errorf("store: add message: %w", ErrInvalidMessage)
 	}
 
