@@ -63,8 +63,8 @@ func TestHandleEvent_TextMessage(t *testing.T) {
 		t.Fatal("handleEvent() = false, want true")
 	}
 
-	if !sink.Has("conversation " + sender.String()) {
-		t.Errorf("conversation not reported: %v", sink.Lines())
+	if conv, ok := sink.ConversationFor(sender.String()); !ok || conv.Title != "Alice" {
+		t.Errorf("conversation = %+v, ok=%t, want titled Alice", conv, ok)
 	}
 	live := sink.LiveMessages()[sender.String()]
 	if len(live) != 1 || live[0].Text != "hi" || live[0].SenderName != "Alice" {
@@ -483,8 +483,47 @@ func TestHandleEvent_GroupMessage_GroupInfoFails(t *testing.T) {
 
 	c.handleEvent(t.Context(), sink, &events.ChatEvent{Info: info, Event: msg})
 
-	if _, ok := sink.ConversationFor(groupChatID); ok {
-		t.Error("group conversation reported despite groupInfo failing")
+	if conv, ok := sink.ConversationFor(groupChatID); !ok || conv.Title != genericGroupTitle {
+		t.Errorf("conversation = %+v, ok=%t, want a placeholder title so the message is kept", conv, ok)
+	}
+}
+
+// TestHandleEvent_UnknownContactGetsATitle checks that a direct chat
+// with nobody's name known yet still gets a title: the store refuses a
+// conversation without one, which would drop every message in it.
+func TestHandleEvent_UnknownContactGetsATitle(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	msg := &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(1)}
+	c.handleEvent(t.Context(), sink, &events.ChatEvent{Info: info, Event: msg})
+
+	if conv, ok := sink.ConversationFor(sender.String()); !ok || conv.Title != genericSenderName {
+		t.Errorf("conversation = %+v, ok=%t, want titled %q", conv, ok, genericSenderName)
+	}
+}
+
+// TestHandleEvent_OutgoingTitlesByRecipient checks that a message sent
+// from the phone titles its chat after the recipient, not this account.
+func TestHandleEvent_OutgoingTitlesByRecipient(t *testing.T) {
+	t.Parallel()
+
+	self := uuid.New()
+	friend := uuid.New()
+	dev := newFakeDevice(self)
+	dev.names[self] = "Me"
+	dev.names[friend] = "Bob"
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: self, ChatID: friend.String()}
+	c.handleDataMessage(t.Context(), sink, info, &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(1)}, true)
+
+	if conv, ok := sink.ConversationFor(friend.String()); !ok || conv.Title != "Bob" {
+		t.Errorf("conversation = %+v, ok=%t, want titled Bob", conv, ok)
 	}
 }
 

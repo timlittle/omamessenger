@@ -283,3 +283,12 @@ func (c *Connector) markReported(conversationRemoteID string) (alreadyReported b
 
 	return alreadyReported
 }
+
+// forgetReported lets the next message report conversationRemoteID
+// again, after a report made with incomplete details.
+func (c *Connector) forgetReported(conversationRemoteID string) {
+	c.identityMu.Lock()
+	defer c.identityMu.Unlock()
+
+	delete(c.reportedChats, conversationRemoteID)
+}

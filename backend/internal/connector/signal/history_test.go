@@ -32,9 +32,9 @@ func TestResolveChatIdentity_Contact(t *testing.T) {
 	}
 	c := newTestConnector(dev)
 
-	remoteID, kind, ok := c.resolveChatIdentity(t.Context(), dev, 1)
-	if !ok || remoteID != friend.String() || kind != domain.KindDirect {
-		t.Errorf("resolveChatIdentity() = %q, %q, %t", remoteID, kind, ok)
+	remoteID, kind, title, ok := c.resolveChatIdentity(t.Context(), dev, 1)
+	if !ok || remoteID != friend.String() || kind != domain.KindDirect || title != genericSenderName {
+		t.Errorf("resolveChatIdentity() = %q, %q, %q, %t", remoteID, kind, title, ok)
 	}
 }
 
@@ -49,9 +49,9 @@ func TestResolveChatIdentity_Self(t *testing.T) {
 	c := newTestConnector(dev)
 	c.connected(dev, &connectortest.Sink{}, nil)
 
-	remoteID, kind, ok := c.resolveChatIdentity(t.Context(), dev, 2)
-	if !ok || remoteID != self.String() || kind != domain.KindDirect {
-		t.Errorf("resolveChatIdentity() = %q, %q, %t", remoteID, kind, ok)
+	remoteID, kind, title, ok := c.resolveChatIdentity(t.Context(), dev, 2)
+	if !ok || remoteID != self.String() || kind != domain.KindDirect || title != noteToSelfTitle {
+		t.Errorf("resolveChatIdentity() = %q, %q, %q, %t", remoteID, kind, title, ok)
 	}
 }
 
@@ -62,13 +62,21 @@ func TestResolveChatIdentity_Group(t *testing.T) {
 
 	dev := newFakeDevice(uuid.New())
 	dev.recipients = map[uint64]*backuppb.Recipient{
-		3: {Destination: &backuppb.Recipient_Group{Group: &backuppb.Group{MasterKey: []byte("master-key-bytes")}}},
+		3: {Destination: &backuppb.Recipient_Group{Group: &backuppb.Group{
+			MasterKey: []byte("master-key-bytes"),
+			Snapshot:  &backuppb.Group_GroupSnapshot{Title: &backuppb.Group_GroupAttributeBlob{Content: &backuppb.Group_GroupAttributeBlob_Title{Title: "Climbing"}}},
+		}}},
+		5: {Destination: &backuppb.Recipient_Group{Group: &backuppb.Group{MasterKey: []byte("untitled-group-key")}}},
 	}
 	c := newTestConnector(dev)
 
-	remoteID, kind, ok := c.resolveChatIdentity(t.Context(), dev, 3)
-	if !ok || kind != domain.KindGroup || remoteID == "" {
-		t.Errorf("resolveChatIdentity() = %q, %q, %t", remoteID, kind, ok)
+	remoteID, kind, title, ok := c.resolveChatIdentity(t.Context(), dev, 3)
+	if !ok || kind != domain.KindGroup || remoteID == "" || title != "Climbing" {
+		t.Errorf("resolveChatIdentity() = %q, %q, %q, %t", remoteID, kind, title, ok)
+	}
+
+	if _, _, title, _ := c.resolveChatIdentity(t.Context(), dev, 5); title != genericGroupTitle {
+		t.Errorf("untitled group title = %q, want %q", title, genericGroupTitle)
 	}
 }
 
@@ -82,11 +90,11 @@ func TestResolveChatIdentity_Unresolvable(t *testing.T) {
 	dev.recipients = map[uint64]*backuppb.Recipient{4: {Destination: &backuppb.Recipient_ReleaseNotes{}}}
 	c := newTestConnector(dev)
 
-	if _, _, ok := c.resolveChatIdentity(t.Context(), dev, 4); ok {
+	if _, _, _, ok := c.resolveChatIdentity(t.Context(), dev, 4); ok {
 		t.Error("resolveChatIdentity() resolved a release-notes recipient")
 	}
 
-	if _, _, ok := c.resolveChatIdentity(t.Context(), dev, 999); ok {
+	if _, _, _, ok := c.resolveChatIdentity(t.Context(), dev, 999); ok {
 		t.Error("resolveChatIdentity() resolved an unknown recipient id")
 	}
 }
@@ -169,7 +177,7 @@ func TestImportHistory_ReportsChatsAndMessages(t *testing.T) {
 	dev := newFakeDevice(uuid.New())
 	dev.transferMeta = &signalmeow.TransferArchiveMetadata{CDN: 3, Key: "k"}
 	dev.recipients = map[uint64]*backuppb.Recipient{
-		1: {Destination: &backuppb.Recipient_Contact{Contact: &backuppb.Contact{Aci: friendBytes}}},
+		1: {Destination: &backuppb.Recipient_Contact{Contact: &backuppb.Contact{Aci: friendBytes, SystemGivenName: "Ann", SystemFamilyName: "Lee"}}},
 	}
 	pinnedOrder := uint32(1)
 	dev.chats = []*sstore.BackupChat{
@@ -185,7 +193,7 @@ func TestImportHistory_ReportsChatsAndMessages(t *testing.T) {
 	c.importHistory(t.Context(), dev, sink)
 
 	conv, ok := sink.ConversationFor(friend.String())
-	if !ok || !conv.Pinned || conv.PinOrder != 1 {
+	if !ok || !conv.Pinned || conv.PinOrder != 1 || conv.Title != "Ann Lee" {
 		t.Errorf("conversation = %+v, ok=%t", conv, ok)
 	}
 

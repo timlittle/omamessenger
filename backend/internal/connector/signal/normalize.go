@@ -14,6 +14,13 @@ import (
 // resolved a name for, matching how the other connectors show one.
 const genericSenderName = "Signal user"
 
+// genericGroupTitle stands in for a group whose details could not be
+// fetched; the store refuses a conversation without a title.
+const genericGroupTitle = "Signal group"
+
+// noteToSelfTitle names the chat with this account itself, as Signal does.
+const noteToSelfTitle = "Note to Self"
+
 // normalizeDataMessage turns a DataMessage into the domain message
 // events.go reports. The returned pointer, when not nil, is the
 // attachment to remember for a later FetchMedia (see fetch.go).

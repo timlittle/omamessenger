@@ -226,11 +226,23 @@ func (c *Connector) ensureConversation(ctx context.Context, sink connector.Sink,
 		sink.Conversation(ctx, domain.Conversation{
 			AccountID: c.account.ID, Service: domain.ServiceSignal,
 			RemoteID: info.ChatID, Kind: domain.KindDirect,
+			Title: c.directTitle(ctx, info.ChatID),
 		})
 		return
 	}
 
 	c.reportGroup(ctx, sink, types.GroupIdentifier(info.ChatID))
+}
+
+// directTitle names a direct chat after the other person, whose
+// account the chat id is.
+func (c *Connector) directTitle(ctx context.Context, chatID string) string {
+	aci, err := uuid.Parse(chatID)
+	if err != nil {
+		return genericSenderName
+	}
+
+	return c.resolveSenderName(ctx, aci)
 }
 
 // reportGroup fetches and reports a group's current title, member
@@ -243,6 +255,13 @@ func (c *Connector) reportGroup(ctx context.Context, sink connector.Sink, gid ty
 
 	title, members, seconds, err := dev.groupInfo(ctx, gid)
 	if err != nil {
+		// Reported anyway so its messages are kept; the next message
+		// retries for the real title.
+		c.forgetReported(string(gid))
+		sink.Conversation(ctx, domain.Conversation{
+			AccountID: c.account.ID, Service: domain.ServiceSignal,
+			RemoteID: string(gid), Kind: domain.KindGroup, Title: genericGroupTitle,
+		})
 		return
 	}
 

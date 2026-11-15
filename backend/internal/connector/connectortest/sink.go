@@ -111,6 +111,13 @@ func (s *Sink) Contact(_ context.Context, c domain.Contact) {
 // test can inspect fields the short line leaves out, such as a group's
 // member count.
 func (s *Sink) Conversation(_ context.Context, c domain.Conversation) {
+	// The store refuses a conversation without a title, and with it every
+	// message in that chat; drop it here too so a connector test sees it.
+	if c.Title == "" {
+		s.record("conversation %s rejected: no title", c.RemoteID)
+		return
+	}
+
 	s.record("conversation %s %s", c.RemoteID, c.Title)
 
 	s.mu.Lock()

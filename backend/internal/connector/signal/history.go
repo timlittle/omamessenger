@@ -49,7 +49,7 @@ func (c *Connector) importHistory(ctx context.Context, dev device, sink connecto
 // importChat reports one imported chat's conversation state and newest
 // page of messages.
 func (c *Connector) importChat(ctx context.Context, dev device, sink connector.Sink, chat *backupChat) {
-	remoteID, kind, ok := c.resolveChatIdentity(ctx, dev, chat.RecipientId)
+	remoteID, kind, title, ok := c.resolveChatIdentity(ctx, dev, chat.RecipientId)
 	if !ok {
 		return
 	}
@@ -58,7 +58,7 @@ func (c *Connector) importChat(ctx context.Context, dev device, sink connector.S
 
 	conv := domain.Conversation{
 		AccountID: c.account.ID, Service: domain.ServiceSignal,
-		RemoteID: remoteID, Kind: kind,
+		RemoteID: remoteID, Kind: kind, Title: title,
 		Pinned: chat.PinnedOrder != nil, Archived: chat.Archived,
 	}
 	if conv.Pinned {
@@ -162,22 +162,22 @@ func (c *Connector) chatIDFor(remoteID string) (uint64, bool) {
 
 // resolveChatIdentity resolves a backup chat's recipient to the same
 // remote id and kind a live message for it would carry.
-func (c *Connector) resolveChatIdentity(ctx context.Context, dev device, recipientID uint64) (remoteID, kind string, ok bool) {
+func (c *Connector) resolveChatIdentity(ctx context.Context, dev device, recipientID uint64) (remoteID, kind, title string, ok bool) {
 	recipient, err := dev.backupRecipient(ctx, recipientID)
 	if err != nil || recipient == nil {
-		return "", "", false
+		return "", "", "", false
 	}
 
 	switch dest := recipient.Destination.(type) {
 	case *backuppb.Recipient_Contact:
-		aci, ok := uuid.FromBytes(dest.Contact.GetAci())
-		if ok != nil || aci == uuid.Nil {
-			return "", "", false
+		aci, err := uuid.FromBytes(dest.Contact.GetAci())
+		if err != nil || aci == uuid.Nil {
+			return "", "", "", false
 		}
 
-		return senderRemoteID(aci), domain.KindDirect, true
+		return senderRemoteID(aci), domain.KindDirect, c.backupContactTitle(ctx, aci, dest.Contact), true
 	case *backuppb.Recipient_Self:
-		return senderRemoteID(c.selfID()), domain.KindDirect, true
+		return senderRemoteID(c.selfID()), domain.KindDirect, noteToSelfTitle, true
 	case *backuppb.Recipient_Group:
 		// SerializedGroupMasterKey is base64 text, not raw bytes cast to
 		// a string (signalmeow's own masterKeyToBytes decodes it that
@@ -185,13 +185,39 @@ func (c *Connector) resolveChatIdentity(ctx context.Context, dev device, recipie
 		masterKey := base64.StdEncoding.EncodeToString(dest.Group.GetMasterKey())
 		gid, err := dev.groupIdentifierForMasterKey(ctx, types.SerializedGroupMasterKey(masterKey))
 		if err != nil {
-			return "", "", false
+			return "", "", "", false
 		}
 
-		return string(gid), domain.KindGroup, true
+		title := dest.Group.GetSnapshot().GetTitle().GetTitle()
+		if title == "" {
+			title = genericGroupTitle
+		}
+
+		return string(gid), domain.KindGroup, title, true
 	default:
-		return "", "", false
+		return "", "", "", false
 	}
+}
+
+// backupContactTitle prefers the name saved in the phone's contacts,
+// then the contact's own profile name, then whatever Signal resolves.
+func (c *Connector) backupContactTitle(ctx context.Context, aci uuid.UUID, contact *backuppb.Contact) string {
+	for _, name := range []string{
+		joinName(contact.GetSystemGivenName(), contact.GetSystemFamilyName()),
+		joinName(contact.GetProfileGivenName(), contact.GetProfileFamilyName()),
+	} {
+		if name != "" {
+			c.rememberName(senderRemoteID(aci), name)
+			return name
+		}
+	}
+
+	return c.resolveSenderName(ctx, aci)
+}
+
+// joinName joins a given and family name, either of which may be empty.
+func joinName(given, family string) string {
+	return strings.TrimSpace(given + " " + family)
 }
 
 // normalizeBackupItem maps one transferred message to a domain
