@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -24,7 +25,9 @@ const markReadTimeout = 10 * time.Second
 // Updates for unknown accounts or conversations are dropped: a connector
 // reports a conversation before its messages. Storage errors are dropped
 // too, because a connector has no way to act on them; the next update
-// brings the UI up to date.
+// brings the UI up to date. A refused conversation and a message
+// dropped for a still-unknown conversation are both logged, deduped by
+// dropLog so a busy or broken chat cannot flood the log with either.
 type Ingest struct {
 	store      *store.Store
 	notifier   Notifier
@@ -53,6 +56,11 @@ type Ingest struct {
 	// for them to actually finish before returning, rather than only
 	// asking them to stop.
 	flushes sync.WaitGroup
+
+	// drops dedupes the "dropped conversation" and "dropped message"
+	// log lines below, so a busy or broken chat logs each kind of drop
+	// at most once per dropLogInterval rather than once per update.
+	drops *dropLog
 }
 
 // Run ties the debounced read-receipt flush to the helper's root
@@ -120,10 +128,36 @@ func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
 
 	conv, _, err := in.store.EnsureConversation(ctx, c)
 	if err != nil {
+		if errors.Is(err, store.ErrInvalidConversation) {
+			in.logDroppedConversation(c.Service)
+		}
 		return
 	}
 
 	in.events.publish(ctx, EventConversationUpdated, conv)
+}
+
+// logDroppedConversation logs that a conversation the store refused
+// was dropped, named only by its service (see privacy.md): its own
+// remote id or title could be a phone number or a group's chosen name.
+func (in *Ingest) logDroppedConversation(service string) {
+	if in.logger == nil || !in.drops.allow("conversation:" + service) {
+		return
+	}
+
+	in.logger.Printf("ingest: dropped conversation (service=%s, reason=invalid)", service)
+}
+
+// logDroppedUnknownConversation logs that a message for a conversation
+// Ingest has not seen yet was dropped, named only by the account it
+// belongs to (see privacy.md): the conversation's own remote id can be
+// a phone number for a direct chat.
+func (in *Ingest) logDroppedUnknownConversation(accountID string) {
+	if in.logger == nil || !in.drops.allow("conversation unknown:" + accountID) {
+		return
+	}
+
+	in.logger.Printf("ingest: dropped message (account=%s, reason=conversation unknown)", accountID)
 }
 
 // Incoming records a live message, counting it towards the conversation's
@@ -439,6 +473,7 @@ func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector
 func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain.Message, countUnread bool) (_ domain.Conversation, _ domain.Message, before int, ok bool) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, remoteID)
 	if err != nil {
+		in.logDroppedUnknownConversation(accountID)
 		return conv, m, 0, false
 	}
 
@@ -590,4 +625,37 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 		Text:           m.Text,
 		ConversationID: conv.ID,
 	}
+}
+
+// dropLogInterval bounds how often dropLog lets the same key's log line
+// through, so a busy or broken chat that keeps hitting the same drop
+// cannot flood the log with it.
+const dropLogInterval = time.Minute
+
+// dropLog dedupes a repeated "dropped" log line by key, so Ingest logs
+// each distinct drop at most once per dropLogInterval.
+type dropLog struct {
+	mu   sync.Mutex
+	last map[string]time.Time
+}
+
+// newDropLog returns an empty dropLog.
+func newDropLog() *dropLog {
+	return &dropLog{last: map[string]time.Time{}}
+}
+
+// allow reports whether key may be logged now: true the first time, or
+// once dropLogInterval has passed since the last time it was.
+func (d *dropLog) allow(key string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := time.Now()
+	if last, ok := d.last[key]; ok && now.Sub(last) < dropLogInterval {
+		return false
+	}
+
+	d.last[key] = now
+
+	return true
 }

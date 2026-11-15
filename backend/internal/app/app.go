@@ -379,6 +379,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	ingest := &Ingest{
 		store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state,
 		outgoing: d.Outgoing, cache: d.Cache, logger: d.Logger, retries: retries, limiter: d.Limiter,
+		drops: newDropLog(),
 	}
 	commands.ingest = ingest
 
