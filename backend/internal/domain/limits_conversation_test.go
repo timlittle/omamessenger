@@ -48,3 +48,28 @@ func TestValidConversation_RejectsMissingField(t *testing.T) {
 		})
 	}
 }
+
+// TestHasText checks the rule the store applies to every message: a
+// message without text is refused, so a connector must give one.
+func TestHasText(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		m    domain.Message
+		want bool
+	}{
+		{"text", domain.Message{Text: "hi"}, true},
+		{"placeholder", domain.Message{Text: domain.MediaPlaceholder(domain.MediaPhoto)}, true},
+		{"empty", domain.Message{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := domain.HasText(tt.m); got != tt.want {
+				t.Errorf("HasText() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
