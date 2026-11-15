@@ -3,6 +3,7 @@ package signal
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -181,7 +182,16 @@ func (d *fakeDevice) downloadAttachment(_ context.Context, ptr *signalpb.Attachm
 		return d.downloadErr
 	}
 
-	_, err := file.Write(d.downloadData)
+	if _, err := file.Write(d.downloadData); err != nil {
+		return err
+	}
+
+	// signalmeow seeks back and reads the file to decrypt it in place, so
+	// the fake does too: a write-only file fails here as it does for real.
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	_, err := io.ReadAll(file)
 
 	return err
 }

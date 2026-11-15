@@ -61,7 +61,8 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return err
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	// Read-write: signalmeow reads the download back to decrypt it in place.
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("signal: fetch media: %w", err)
 	}
