@@ -28,7 +28,7 @@ var ErrInvalidConversation = errors.New("conversation needs accountId, remoteId 
 // creating it when missing. Title, kind and member count follow the remote
 // service. created reports whether a new conversation was stored.
 func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (_ domain.Conversation, created bool, _ error) {
-	if c.AccountID == "" || c.RemoteID == "" || c.Title == "" {
+	if !domain.ValidConversation(c) {
 		return c, false, fmt.Errorf("store: ensure conversation: %w", ErrInvalidConversation)
 	}
 

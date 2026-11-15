@@ -111,10 +111,11 @@ func (s *Sink) Contact(_ context.Context, c domain.Contact) {
 // test can inspect fields the short line leaves out, such as a group's
 // member count.
 func (s *Sink) Conversation(_ context.Context, c domain.Conversation) {
-	// The store refuses a conversation without a title, and with it every
-	// message in that chat; drop it here too so a connector test sees it.
-	if c.Title == "" {
-		s.record("conversation %s rejected: no title", c.RemoteID)
+	// The store refuses a conversation without an account, remote id or
+	// title, and with it every message in that chat; drop it here too so
+	// a connector test sees it (see domain.ValidConversation).
+	if !domain.ValidConversation(c) {
+		s.record("conversation %s rejected: invalid", c.RemoteID)
 		return
 	}
 
@@ -143,6 +144,14 @@ func (s *Sink) ConversationFor(remoteID string) (domain.Conversation, bool) {
 // Incoming records a new message and keeps it, like History does for
 // earlier ones, so a test can inspect what a connector reported live.
 func (s *Sink) Incoming(_ context.Context, _, remote string, m domain.Message) {
+	// Ingest.save drops a message with an oversized remote or sender id
+	// outright (see domain.ValidMessageIDs); mirror that here so a
+	// connector test sees the same drop a real run would.
+	if !domain.ValidMessageIDs(m) {
+		s.record("incoming %s rejected: invalid id", remote)
+		return
+	}
+
 	s.record("incoming %s %s", remote, m.RemoteID)
 
 	s.mu.Lock()
@@ -169,6 +178,11 @@ func (s *Sink) LiveMessages() map[string][]domain.Message {
 
 // History records an earlier message and keeps it.
 func (s *Sink) History(_ context.Context, _, remote string, m domain.Message) {
+	if !domain.ValidMessageIDs(m) {
+		s.record("history %s rejected: invalid id", remote)
+		return
+	}
+
 	s.record("history %s %s", remote, m.RemoteID)
 
 	s.mu.Lock()

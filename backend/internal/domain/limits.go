@@ -111,6 +111,15 @@ func ValidMessageIDs(m Message) bool {
 	return len(m.RemoteID) <= MaxRemoteIDLength && len(m.SenderID) <= MaxRemoteIDLength
 }
 
+// ValidConversation reports whether c carries everything the store
+// needs to keep it, and every later message for it: an account id, a
+// remote id and a title. store.EnsureConversation and
+// connectortest.Sink both call this, so a connector that reports an
+// untitled chat is caught the same way in a real run and in its tests.
+func ValidConversation(c Conversation) bool {
+	return c.AccountID != "" && c.RemoteID != "" && c.Title != ""
+}
+
 // MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
 // units.
 const MaxPreviewLength = 300
