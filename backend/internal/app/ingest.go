@@ -141,7 +141,7 @@ func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
 // was dropped, named only by its service (see privacy.md): its own
 // remote id or title could be a phone number or a group's chosen name.
 func (in *Ingest) logDroppedConversation(service string) {
-	if in.logger == nil || !in.drops.allow("conversation:" + service) {
+	if in.logger == nil || !in.drops.allow("conversation:"+service) {
 		return
 	}
 
@@ -153,7 +153,7 @@ func (in *Ingest) logDroppedConversation(service string) {
 // belongs to (see privacy.md): the conversation's own remote id can be
 // a phone number for a direct chat.
 func (in *Ingest) logDroppedUnknownConversation(accountID string) {
-	if in.logger == nil || !in.drops.allow("conversation unknown:" + accountID) {
+	if in.logger == nil || !in.drops.allow("conversation unknown:"+accountID) {
 		return
 	}
 
