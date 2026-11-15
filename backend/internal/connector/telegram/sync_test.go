@@ -395,3 +395,6 @@ func TestSync_UpgradesAPlaceholderFromAnEarlierRunUnconditionally(t *testing.T) 
 		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
 	}
 }
+
+// This file's real-store end-to-end cases live in sync_realstore_test.go,
+// split out to stay under this file's own length limit.

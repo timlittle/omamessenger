@@ -566,3 +566,8 @@ func TestEditMessage_UpgradesACachedPlaceholderWhenItsEntitiesResolve(t *testing
 		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
 	}
 }
+
+// TestNewMessage_StoresAMessageFromAnUnresolvedSender and the other
+// real-store end-to-end cases for this file's handlers live in
+// live_realstore_test.go, split out to stay under this file's own
+// length limit.
