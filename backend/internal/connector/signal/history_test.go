@@ -207,6 +207,47 @@ func TestImportHistory_ReportsChatsAndMessages(t *testing.T) {
 	}
 }
 
+// TestImportHistory_ReportsChatsAndMessages_StoresThem drives the same
+// transfer import through a real app.Ingest over a real store,
+// confirming a chat imported from history actually lands in the
+// store, not just connectortest.Sink's own simplified bookkeeping.
+func TestImportHistory_ReportsChatsAndMessages_StoresThem(t *testing.T) {
+	t.Parallel()
+
+	friend := uuid.New()
+	friendBytes, err := friend.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice(uuid.New())
+	dev.transferMeta = &signalmeow.TransferArchiveMetadata{CDN: 3, Key: "k"}
+	dev.recipients = map[uint64]*backuppb.Recipient{
+		1: {Destination: &backuppb.Recipient_Contact{Contact: &backuppb.Contact{Aci: friendBytes, SystemGivenName: "Ann", SystemFamilyName: "Lee"}}},
+	}
+	dev.chats = []*sstore.BackupChat{
+		{Chat: &backuppb.Chat{Id: 10, RecipientId: 1}},
+	}
+	dev.itemsByChat = map[uint64][]*backuppb.ChatItem{
+		10: {{AuthorId: 1, DateSent: 1, Item: &backuppb.ChatItem_StandardMessage{StandardMessage: &backuppb.StandardMessage{Text: &backuppb.Text{Body: "hi"}}}}},
+	}
+
+	c := newTestConnector(dev)
+	ingest := newRealIngest(t)
+
+	c.importHistory(t.Context(), dev, ingest)
+
+	conv, err := ingest.store.ConversationByRemote(t.Context(), "acc1", friend.String())
+	if err != nil {
+		t.Fatalf("ConversationByRemote() = %v, want the imported chat kept", err)
+	}
+
+	messages, _, err := ingest.store.Messages(t.Context(), conv.ID, "", 10)
+	if err != nil || len(messages) != 1 || messages[0].Text != "hi" {
+		t.Fatalf("messages = %+v, %v; want the imported message stored", messages, err)
+	}
+}
+
 // TestImportHistory_FetchFails checks that a transfer offered but
 // failing to download leaves no history imported, without panicking.
 func TestImportHistory_FetchFails(t *testing.T) {

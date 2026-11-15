@@ -111,6 +111,69 @@ func TestHandleEvent_GroupMessage_GroupInfoFails(t *testing.T) {
 	}
 }
 
+// TestHandleEvent_GroupMessage_GroupInfoFails_StoresTheMessage drives
+// the same failed group-info lookup through a real app.Ingest over a
+// real store, the end-to-end path connectortest.Sink's own bookkeeping
+// cannot prove: the placeholder title above must actually let the
+// store keep the conversation and the message, not just avoid an
+// empty-fields report.
+func TestHandleEvent_GroupMessage_GroupInfoFails_StoresTheMessage(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice(uuid.New())
+	dev.groupErr = errors.New("network down")
+	c := newTestConnector(dev)
+	ingest := newRealIngest(t)
+	media := mustOpenMediaStore(t)
+	c.connected(dev, ingest, media)
+
+	sender := uuid.New()
+	info := events.MessageInfo{Sender: sender, ChatID: groupChatID}
+	msg := &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(1)}
+	c.handleEvent(t.Context(), ingest, &events.ChatEvent{Info: info, Event: msg})
+
+	conv, err := ingest.store.ConversationByRemote(t.Context(), "acc1", groupChatID)
+	if err != nil {
+		t.Fatalf("ConversationByRemote() = %v, want the group kept despite the failed lookup", err)
+	}
+
+	messages, _, err := ingest.store.Messages(t.Context(), conv.ID, "", 10)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("messages = %+v, %v; want the one message stored", messages, err)
+	}
+}
+
+// TestHandleEvent_UnknownContactGetsATitle_StoresTheMessage mirrors
+// TestHandleEvent_UnknownContactGetsATitle over a real store: the
+// generic title above must be enough for the store to actually keep
+// the conversation and the message - exactly the case where this
+// connector's own fix landed, since connectortest.Sink used to accept
+// an untitled conversation the real store would have refused.
+func TestHandleEvent_UnknownContactGetsATitle_StoresTheMessage(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c := newTestConnector(dev)
+	ingest := newRealIngest(t)
+	media := mustOpenMediaStore(t)
+	c.connected(dev, ingest, media)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	msg := &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(1)}
+	c.handleEvent(t.Context(), ingest, &events.ChatEvent{Info: info, Event: msg})
+
+	conv, err := ingest.store.ConversationByRemote(t.Context(), "acc1", sender.String())
+	if err != nil {
+		t.Fatalf("ConversationByRemote() = %v, want a conversation from an unknown contact kept", err)
+	}
+
+	messages, _, err := ingest.store.Messages(t.Context(), conv.ID, "", 10)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("messages = %+v, %v; want the one message stored", messages, err)
+	}
+}
+
 // TestHandleEvent_UnknownContactGetsATitle checks that a direct chat
 // with nobody's name known yet still gets a title: the store refuses a
 // conversation without one, which would drop every message in it.

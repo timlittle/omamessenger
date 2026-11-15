@@ -194,6 +194,66 @@ func TestHandleMessage_SavesIncomingMessageMeta(t *testing.T) {
 	}
 }
 
+// TestHandleMessage_Outgoing_StoresTheMessage drives the same synced
+// outgoing message through a real app.Ingest over a real store: a
+// message sent from the user's own phone goes through History rather
+// than Incoming, a different path through Ingest.save, so it earns
+// its own end-to-end check rather than relying on
+// TestHandleMessage_Outgoing's sink-only recording.
+func TestHandleMessage_Outgoing_StoresTheMessage(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c := newTestConnector(dev)
+	ingest := newRealIngest(t)
+	media := mustOpenMediaStore(t)
+	c.connected(dev, ingest, media)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	c.ensureConversation(t.Context(), ingest, info) // handleDataMessage's own precondition for handleMessage
+	msg := &signalpb.DataMessage{Body: proto.String("sent from another device"), Timestamp: proto.Uint64(1)}
+	c.handleMessage(t.Context(), ingest, info, msg, true)
+
+	conv, err := ingest.store.ConversationByRemote(t.Context(), "acc1", sender.String())
+	if err != nil {
+		t.Fatalf("ConversationByRemote() = %v", err)
+	}
+
+	messages, _, err := ingest.store.Messages(t.Context(), conv.ID, "", 10)
+	if err != nil || len(messages) != 1 || !messages[0].Outgoing {
+		t.Fatalf("messages = %+v, %v; want one outgoing message stored", messages, err)
+	}
+}
+
+// TestHandleMessage_BeforeConversationReported_DropsAndLogs checks
+// that a message reported before its conversation - never possible
+// through handleDataMessage's own ensureConversation call, but
+// reachable if a future caller skips it, the way this test does on
+// purpose - is dropped by the real store rather than stored
+// unreachably, and that the drop is logged rather than silent.
+func TestHandleMessage_BeforeConversationReported_DropsAndLogs(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c := newTestConnector(dev)
+	ingest := newRealIngest(t)
+	media := mustOpenMediaStore(t)
+	c.connected(dev, ingest, media)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String()}
+	msg := &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(1)}
+	c.handleMessage(t.Context(), ingest, info, msg, false)
+
+	if _, err := ingest.store.ConversationByRemote(t.Context(), "acc1", sender.String()); err == nil {
+		t.Fatal("ConversationByRemote() succeeded for a conversation never reported")
+	}
+	if lines := ingest.logger.take(); len(lines) != 1 {
+		t.Errorf("logged lines = %v, want exactly one drop logged", lines)
+	}
+}
+
 // TestHandleEdit_NoDataMessage checks that an edit carrying no data
 // message is dropped rather than reporting an empty message.
 func TestHandleEdit_NoDataMessage(t *testing.T) {
