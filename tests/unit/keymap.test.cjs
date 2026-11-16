@@ -180,6 +180,16 @@ const cases = [
   ['deleteConfirm', letter('n'), 0, 'n', 'delete.cancel'],
   ['deleteConfirm', KEY.Escape, 0, '', 'escape'],
 
+  ['linkConfirm', KEY.Return, 0, '\r', 'linkConfirm.cancel'],
+  ['linkConfirm', letter('n'), 0, 'n', 'linkConfirm.cancel'],
+  ['linkConfirm', letter('c'), 0, 'c', 'linkConfirm.copy'],
+  ['linkConfirm', letter('y'), 0, 'y', 'linkConfirm.accept'],
+  ['linkConfirm', KEY.Escape, 0, '', 'escape'],
+  // A highlighted message's own keys never fall through to it while
+  // this dialog is open; see Navigation.js's keyContext.
+  ['linkConfirm', letter('o'), 0, 'o', ''],
+  ['linkConfirm', letter('d'), 0, 'd', ''],
+
   // Ctrl+V and Shift+Insert paste through the helper's bounded
   // clipboard.readText in every context with an editable field, except
   // the composer, whose own compose.attach binding (tried first, as a

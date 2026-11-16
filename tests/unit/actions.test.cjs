@@ -36,6 +36,9 @@ test('owner: returns the mapped controller for a known action', () => {
   assert.strictEqual(Actions.owner('message.delete'), 'delete');
   assert.strictEqual(Actions.owner('delete.everyone'), 'delete');
   assert.strictEqual(Actions.owner('field.paste'), 'panel');
+  assert.strictEqual(Actions.owner('linkConfirm.cancel'), 'window');
+  assert.strictEqual(Actions.owner('linkConfirm.accept'), 'window');
+  assert.strictEqual(Actions.owner('linkConfirm.copy'), 'window');
 });
 
 test('owner: returns "" for an action Keymap does not define', () => {

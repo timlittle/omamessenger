@@ -231,6 +231,11 @@ var OWNERS = {
   'close.quit': 'window',
   'close.keep': 'window',
   'escape': 'window',
+  // The mismatched-link question: WindowController already owns openLink
+  // and the link it is about (see linkConfirmOpen).
+  'linkConfirm.cancel': 'window',
+  'linkConfirm.copy': 'window',
+  'linkConfirm.accept': 'window',
 
   // field.paste has no controller owner: Panel.routeKey pastes directly
   // into whichever field has focus. "panel" keeps it in the

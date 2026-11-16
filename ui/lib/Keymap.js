@@ -247,7 +247,13 @@ var BINDINGS = [
   // A file that can run code or load a web page: Enter picks the safe default, not Open.
   { action: 'openConfirm.save', keys: ['Enter', 's'], contexts: ['openConfirm'], label: 'Save to Downloads', hint: true },
   { action: 'openConfirm.accept', keys: ['y'], contexts: ['openConfirm'], label: 'Open anyway', hint: true },
-  { action: 'openConfirm.cancel', keys: ['n'], contexts: ['openConfirm'], label: 'Cancel', hint: true }
+  { action: 'openConfirm.cancel', keys: ['n'], contexts: ['openConfirm'], label: 'Cancel', hint: true },
+
+  // A link whose visible text doesn't match where it goes: Enter picks
+  // the safe default, Cancel, not Open.
+  { action: 'linkConfirm.cancel', keys: ['Enter', 'n'], contexts: ['linkConfirm'], label: 'Cancel', hint: true },
+  { action: 'linkConfirm.copy', keys: ['c'], contexts: ['linkConfirm'], label: 'Copy the real link', hint: true },
+  { action: 'linkConfirm.accept', keys: ['y'], contexts: ['linkConfirm'], label: 'Open anyway', hint: true }
 ];
 
 // effectiveBindings returns service's own effective bindings (defaults

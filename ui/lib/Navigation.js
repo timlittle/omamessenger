@@ -8,7 +8,8 @@
 // photo viewer > the health check report > the "What's new" overlay >
 // palette > reaction picker > poll vote mode > the delete question > the
 // archive-all question > the block or report-spam question > the
-// risky-open question > dialog > search > compose > conversation > list.
+// risky-open question > the mismatched-link question > dialog > search >
+// compose > conversation > list.
 // The viewer, the reaction picker and poll vote mode are never open
 // together, so their relative order only matters in theory.
 function keyContext(state) {
@@ -27,6 +28,7 @@ function keyContext(state) {
   if (state.archiveConfirmOpen) return 'archiveConfirm';
   if (state.blockConfirmOpen) return 'blockConfirm';
   if (state.openConfirmOpen) return 'openConfirm';
+  if (state.linkConfirmOpen) return 'linkConfirm';
   if (state.dialogOpen) return 'dialog';
   if (state.searchFocused) return 'search';
   if (state.composeFocused) return 'compose';
@@ -61,6 +63,7 @@ function escapeAction(state) {
   if (state.archiveConfirmOpen) return 'cancel-archive-all';
   if (state.blockConfirmOpen) return 'cancel-block';
   if (state.openConfirmOpen) return 'cancel-risky-open';
+  if (state.linkConfirmOpen) return 'cancel-link-confirm';
   if (state.dialogOpen) return 'close-dialog';
 
   if (state.searchFocused) {
@@ -117,6 +120,7 @@ function buildState(ctx) {
     archiveConfirmOpen: ctx.listController ? !!(ctx.listController.archiveAllOpen || ctx.listController.archiveOneOpen) : false,
     blockConfirmOpen: ctx.listController ? ctx.listController.blockConfirmOpen : false,
     openConfirmOpen: ctx.conversationController ? ctx.conversationController.riskyOpenConfirmOpen : false,
+    linkConfirmOpen: ctx.windowController ? ctx.windowController.linkConfirmOpen : false,
     dialogOpen: ctx.dialogController ? ctx.dialogController.open : false,
     searchFocused: ctx.listController ? ctx.listController.searchFocused : false,
     composeFocused: ctx.composerController ? ctx.composerController.composeFocused : false,

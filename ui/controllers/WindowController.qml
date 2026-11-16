@@ -262,7 +262,10 @@ Item {
       "close.cancel": () => root.cancelClose(),
       "close.quit": () => root.quit(),
       "close.keep": () => root.keepInBackground(),
-      "escape": () => root._escape()
+      "escape": () => root._escape(),
+      "linkConfirm.cancel": () => root.cancelledLinkConfirm(),
+      "linkConfirm.copy": () => root.copiedLinkConfirm(),
+      "linkConfirm.accept": () => root.confirmedOpenLink()
     };
 
     const handler = handlers[action];
@@ -677,6 +680,7 @@ Item {
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
       "cancel-block": () => { if (root.listController) root.listController.cancelBlock(); },
       "cancel-risky-open": () => { if (root.conversationController) root.conversationController.cancelRiskyOpen(); },
+      "cancel-link-confirm": () => root.cancelledLinkConfirm(),
       "dismiss-error": () => root.dismissErrorBanner(),
       "dismiss-toast": () => root.dismissToast(),
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },

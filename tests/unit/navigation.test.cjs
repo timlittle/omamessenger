@@ -308,6 +308,40 @@ test('escapeAction closes the risky-open question before the dialog beneath it, 
   assert.strictEqual(Navigation.escapeAction({ openConfirmOpen: true, blockConfirmOpen: true }), 'cancel-block');
 });
 
+test('keyContext returns linkConfirm when open, above dialog, search, compose and conversation', () => {
+  const state = { linkConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'linkConfirm');
+});
+
+test('keyContext: the viewer, the palette, setup, the reaction picker, the delete question, the archive-all question, the block question and the risky-open question still win over the mismatched-link question', () => {
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, deleteConfirmOpen: true, pane: 'list' }), 'deleteConfirm');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, archiveConfirmOpen: true, pane: 'list' }), 'archiveConfirm');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, blockConfirmOpen: true, pane: 'list' }), 'blockConfirm');
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, openConfirmOpen: true, pane: 'list' }), 'openConfirm');
+});
+
+// The bug this fixes: with no linkConfirmOpen in keyContext/buildState at
+// all, a highlighted message's own Enter (message.open) or Esc
+// (close-conversation) kept firing underneath the dialog instead of
+// answering it.
+
+test('keyContext: a highlighted message or open conversation never wins over the mismatched-link question', () => {
+  assert.strictEqual(Navigation.keyContext({ linkConfirmOpen: true, pane: 'conversation', activeId: 'c1' }), 'linkConfirm');
+});
+
+test('escapeAction closes the mismatched-link question before the dialog beneath it, but not before the risky-open question', () => {
+  assert.strictEqual(Navigation.escapeAction({ linkConfirmOpen: true, dialogOpen: true }), 'cancel-link-confirm');
+  assert.strictEqual(Navigation.escapeAction({ linkConfirmOpen: true, openConfirmOpen: true }), 'cancel-risky-open');
+});
+
+test('escapeAction: the mismatched-link question closes itself, not the open conversation behind it', () => {
+  assert.strictEqual(Navigation.escapeAction({ linkConfirmOpen: true, pane: 'conversation', activeId: 'c1' }), 'cancel-link-confirm');
+});
+
 test('escapeAction: leave-unread-view when nothing else is open', () => {
   const state = { pane: 'list', activeId: '', query: '', unreadView: true };
 
@@ -355,6 +389,7 @@ test('buildState defaults every field when no controller is given', () => {
     archiveConfirmOpen: false,
     blockConfirmOpen: false,
     openConfirmOpen: false,
+    linkConfirmOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -372,7 +407,7 @@ test('buildState defaults every field when no controller is given', () => {
 test('buildState reads every field from the controller that owns it, including doctorOpen', () => {
   const ctx = {
     service: { uiState: { pane: 'conversation', activeId: 'ignored-without-conversationController' } },
-    windowController: { confirmingClose: true, doctorOpen: true, whatsNewOpen: true, paletteOpen: true, errorBannerText: 'could not send', toastText: 'Copied to clipboard' },
+    windowController: { confirmingClose: true, doctorOpen: true, whatsNewOpen: true, paletteOpen: true, errorBannerText: 'could not send', toastText: 'Copied to clipboard', linkConfirmOpen: true },
     accountController: { open: false, removing: true, navContext: 'removeAccount' },
     photoViewerController: { viewerOpen: true },
     reactionsController: { pickerOpen: true },
@@ -400,6 +435,7 @@ test('buildState reads every field from the controller that owns it, including d
     archiveConfirmOpen: true,
     blockConfirmOpen: true,
     openConfirmOpen: true,
+    linkConfirmOpen: true,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,
