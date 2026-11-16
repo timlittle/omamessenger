@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"go.mau.fi/mautrix-signal/pkg/signalmeow"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/events"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/signalpb"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/types"
@@ -107,7 +108,8 @@ func (c *Connector) handleDelete(ctx context.Context, sink connector.Sink, info 
 // handleReaction records a live reaction and reports the message's
 // resulting set of chips.
 func (c *Connector) handleReaction(ctx context.Context, sink connector.Sink, info events.MessageInfo, reaction *signalpb.DataMessage_Reaction) {
-	targetAuthor, err := parseACI(reaction.GetTargetAuthorAci())
+	// Current phones send the author only in binary form.
+	targetAuthor, err := signalmeow.ParseStringOrBinaryUUID(reaction.GetTargetAuthorAci(), reaction.GetTargetAuthorAciBinary())
 	if err != nil {
 		return
 	}

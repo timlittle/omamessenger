@@ -37,6 +37,28 @@ func TestHandleEvent_Reaction(t *testing.T) {
 	}
 }
 
+// TestHandleEvent_ReactionWithBinaryAuthor checks a reaction naming its
+// target's author only in binary form, as current Signal phones send
+// it, is still reported.
+func TestHandleEvent_ReactionWithBinaryAuthor(t *testing.T) {
+	t.Parallel()
+
+	author := uuid.New()
+	self := uuid.New()
+	dev := newFakeDevice(self)
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: self, ChatID: author.String()}
+	reaction := &signalpb.DataMessage_Reaction{
+		Emoji: proto.String("👍"), TargetAuthorAciBinary: author[:], TargetSentTimestamp: proto.Uint64(42),
+	}
+	c.handleEvent(t.Context(), sink, &events.ChatEvent{Info: info, Event: &signalpb.DataMessage{Reaction: reaction}})
+
+	if !sink.Has("reacted " + author.String() + " " + messageRemoteID(author, 42) + " 1") {
+		t.Errorf("reaction not reported: %v", sink.Lines())
+	}
+}
+
 // TestHandleReaction_InvalidTargetAuthor checks that a reaction naming
 // a malformed target author is dropped rather than panicking.
 func TestHandleReaction_InvalidTargetAuthor(t *testing.T) {

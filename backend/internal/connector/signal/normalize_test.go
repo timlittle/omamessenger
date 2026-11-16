@@ -288,6 +288,22 @@ func TestMentions(t *testing.T) {
 	}
 }
 
+// TestMentions_BinaryACI checks a mention naming its person only in
+// binary form, as current Signal phones send it, is still kept.
+func TestMentions_BinaryACI(t *testing.T) {
+	t.Parallel()
+
+	target := uuid.New()
+	ranges := []*signalpb.BodyRange{{
+		Start: proto.Uint32(0), Length: proto.Uint32(5),
+		AssociatedValue: &signalpb.BodyRange_MentionAciBinary{MentionAciBinary: target[:]},
+	}}
+
+	if got := mentions(ranges); len(got) != 1 || got[0].UserID != target.String() {
+		t.Errorf("mentions = %+v, want one naming %q", got, target)
+	}
+}
+
 // TestMentions_SkipsRangesWithNoMention checks that a plain style
 // range (no mention) is dropped rather than reported as an empty
 // mention.

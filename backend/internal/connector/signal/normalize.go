@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 
 	"github.com/google/uuid"
+	"go.mau.fi/mautrix-signal/pkg/signalmeow"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/signalpb"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -325,13 +326,14 @@ func mentions(ranges []*signalpb.BodyRange) []domain.Mention {
 	var out []domain.Mention
 
 	for _, r := range ranges {
-		aci := r.GetMentionAci()
-		if aci == "" {
+		// Current phones send the person only in binary form.
+		aci, err := signalmeow.ParseStringOrBinaryUUID(r.GetMentionAci(), r.GetMentionAciBinary())
+		if err != nil {
 			continue
 		}
 
 		out = append(out, domain.Mention{
-			UserID: aci,
+			UserID: senderRemoteID(aci),
 			Offset: int(r.GetStart()),
 			Length: int(r.GetLength()),
 		})
