@@ -96,6 +96,24 @@ test('needsConfirmation ignores a trailing slash difference', () => {
   assert.strictEqual(Links.needsConfirmation('https://example.com/page/', 'https://example.com/page'), false);
 });
 
+test('needsConfirmation is true when only the path differs in letter case', () => {
+  // Short links, invite hashes and video ids are case-sensitive.
+  assert.strictEqual(Links.needsConfirmation('https://bit.ly/Acme-Refund', 'https://bit.ly/acme-refund'), true);
+  assert.strictEqual(Links.needsConfirmation('https://t.me/+AbC', 'https://t.me/+abc'), true);
+});
+
+test('needsConfirmation ignores letter case in the scheme and host', () => {
+  assert.strictEqual(Links.needsConfirmation('HTTPS://Example.COM/Page', 'https://example.com/Page'), false);
+});
+
+test('needsConfirmation is true when a web link really opens another scheme', () => {
+  assert.strictEqual(Links.needsConfirmation('https://host/x', 'tg://host/x'), true);
+});
+
+test('needsConfirmation ignores a missing scheme on a web link', () => {
+  assert.strictEqual(Links.needsConfirmation('example.com/page', 'https://example.com/page'), false);
+});
+
 test('needsConfirmation is true when the visible text names a different destination', () => {
   assert.strictEqual(Links.needsConfirmation('click here', 'https://evil.example.com'), true);
   assert.strictEqual(Links.needsConfirmation('https://good.example.com', 'https://evil.example.com'), true);

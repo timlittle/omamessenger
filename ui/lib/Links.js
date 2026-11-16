@@ -43,19 +43,25 @@ function trimTrailingSlashes(text) {
   return text.slice(0, end);
 }
 
-// normalizeTarget lowers text, trims it, and drops a leading scheme,
-// "www." and a trailing slash, so sameTarget ignores those differences.
+// normalizeTarget reduces text to "scheme|host|path" for sameTarget:
+// http, https and no scheme count as one, the scheme and host ignore
+// case and a leading "www.", and the path loses a trailing slash but
+// keeps its case, since short links and invite codes are case-sensitive.
 function normalizeTarget(text) {
-  const withoutSchemeAndWww = (text || '').trim().toLowerCase()
-    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
-    .replace(/^www\./, '');
+  const trimmed = (text || '').trim();
+  const match = /^([a-z][a-z0-9+.-]*):\/\//i.exec(trimmed);
+  const scheme = match ? match[1].toLowerCase() : '';
+  const rest = match ? trimmed.slice(match[0].length) : trimmed;
+  const cut = rest.search(/[/?#]/);
+  const host = (cut < 0 ? rest : rest.slice(0, cut)).toLowerCase().replace(/^www\./, '');
+  const path = cut < 0 ? '' : rest.slice(cut);
+  const web = scheme === '' || scheme === 'http' || scheme === 'https';
 
-  return trimTrailingSlashes(withoutSchemeAndWww);
+  return `${web ? 'web' : scheme}|${host}|${trimTrailingSlashes(path)}`;
 }
 
 // sameTarget reports whether displayText and url name the same
-// destination once normalizeTarget's own scheme, "www." and trailing
-// slash slack is allowed for.
+// destination once normalizeTarget's own slack is allowed for.
 function sameTarget(displayText, url) {
   return normalizeTarget(displayText) === normalizeTarget(url);
 }
