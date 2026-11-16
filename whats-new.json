@@ -1,6 +1,18 @@
 {
   "releases": [
     {
+      "version": "0.3.7",
+      "date": "2026-11-16",
+      "changes": [
+        "Signal: link your account by QR code, bring over your history, and send and receive messages, photos and voice notes",
+        "Disappearing messages now disappear here too, with a timer showing the time left",
+        "View-once photos, videos and voice notes stay on your phone and are never downloaded",
+        "A link whose text differs from where it goes, even only in letter case, now asks before opening",
+        "The risky-file question now names the file it will open",
+        "Fixes for crash bugs in Go and the compression libraries the helper uses"
+      ]
+    },
+    {
       "version": "0.3.6",
       "date": "2026-11-04",
       "changes": [
