@@ -42,7 +42,8 @@
 // risky-open question instead of handing the file to openExternally,
 // that cancelling leaves it unopened, and that clicking the same file
 // again and confirming does open it, reusing the cached path and
-// risky verdict rather than fetching it again.
+// risky verdict rather than fetching it again; and that a late download
+// for another file never swaps an open question's target.
 //
 // Finally, it reproduces a security review's own scenario: an edit
 // changes a message's media kind - a voice note turned into a photo,
@@ -101,6 +102,10 @@ ShellRoot {
       // r2 is a never-clicked undownloaded file whose message list is
       // cleared while its download is still in flight.
       { id: "r2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4, media: { kind: "file", fileName: "invoice.pdf" }, mediaPath: "" },
+      // race1 and race2 are undownloaded risky files for the late
+      // download check.
+      { id: "race1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4.5, media: { kind: "file", fileName: "race1.html" }, mediaPath: "" },
+      { id: "race2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4.6, media: { kind: "file", fileName: "race2.html" }, mediaPath: "" },
       // v8 and a1 carry a mediaPath already set, the same as a row
       // loaded straight from messages.list would, but never fetched in
       // this session: no play fetch has answered for them yet, for the
@@ -418,6 +423,30 @@ ShellRoot {
     controller.confirmRiskyOpen();
     if (controller.riskyOpenConfirmOpen || root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/r1.html")
       return Check.fail("confirmRiskyOpen = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/r1.html");
+
+    return root.checkLateDownloadNeverReplacesAnOpenRiskyQuestion();
+  }
+
+  // checkLateDownloadNeverReplacesAnOpenRiskyQuestion checks race1's
+  // download, finishing after race2's question opened, leaves the
+  // question naming and opening race2.
+  function checkLateDownloadNeverReplacesAnOpenRiskyQuestion(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("race1");
+    controller.openMedia("race2");
+
+    root.answerFetchSuccessRisky("race2", "/tmp/race2.html");
+    if (!controller.riskyOpenConfirmOpen || controller.riskyOpenFileName !== "race2.html")
+      return Check.fail("the risky question did not open naming race2.html: fileName = " + JSON.stringify(controller.riskyOpenFileName));
+
+    root.answerFetchSuccessRisky("race1", "/tmp/race1.html");
+    if (!controller.riskyOpenConfirmOpen || controller.riskyOpenFileName !== "race2.html")
+      return Check.fail("race1's late answer changed the open question: fileName = " + JSON.stringify(controller.riskyOpenFileName));
+
+    controller.confirmRiskyOpen();
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/race2.html")
+      return Check.fail("confirming opened " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/race2.html");
 
     return true;
   }

@@ -81,10 +81,13 @@ QtObject {
   // _askBeforeOpening and docs/decisions.md).
   property bool riskyConfirmOpen: false
 
-  // _pendingRisky holds the timeline, message id and already-resolved
-  // path riskyConfirmOpen's own question is about, until the user
-  // answers it; an empty id means none is open.
-  property var _pendingRisky: ({ timeline: null, id: "", path: "" })
+  // _pendingRisky holds the timeline, message id, already-resolved path
+  // and file name riskyConfirmOpen's own question is about, until the
+  // user answers it; an empty id means none is open.
+  property var _pendingRisky: ({ timeline: null, id: "", path: "", fileName: "" })
+
+  // riskyFileName names the file riskyConfirmOpen's question is about.
+  readonly property string riskyFileName: root._pendingRisky.fileName || ""
 
   // fetchMedia downloads a message's photo, sticker or voice note and
   // shows it once it is here: the fetch a row's own visibility asks
@@ -163,9 +166,13 @@ QtObject {
 
   // _askBeforeOpening opens the risky-open question for id, remembering
   // what confirming, cancelling or saving to Downloads instead must act
-  // on once the user answers.
+  // on once the user answers. A late download for another file never
+  // replaces an open question's target; clicking it again asks again.
   function _askBeforeOpening(timeline: var, id: string, path: string): void {
-    root._pendingRisky = { timeline: timeline, id: id, path: path };
+    if (root.riskyConfirmOpen) return;
+
+    const media = timeline.media(id);
+    root._pendingRisky = { timeline: timeline, id: id, path: path, fileName: (media && media.fileName) || "" };
     root.riskyConfirmOpen = true;
   }
 
@@ -199,7 +206,7 @@ QtObject {
   // file it was about.
   function _closeRiskyConfirm(): void {
     root.riskyConfirmOpen = false;
-    root._pendingRisky = { timeline: null, id: "", path: "" };
+    root._pendingRisky = { timeline: null, id: "", path: "", fileName: "" };
   }
 
   // toggleVideo selects, deselects or pauses id as the current video,

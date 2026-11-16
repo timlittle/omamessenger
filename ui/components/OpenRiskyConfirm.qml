@@ -9,6 +9,9 @@ import QtQuick
 ChoiceDialog {
   id: root
 
+  // fileName names the file confirming will open.
+  property string fileName: ""
+
   // confirmedOpen opens the file anyway, bypassing the question.
   signal confirmedOpen()
   // savedToDownloads saves the file into the downloads directory
@@ -20,7 +23,9 @@ ChoiceDialog {
   objectName: "openRiskyConfirm"
   titleObjectName: "openRiskyQuestion"
   title: "This file can run code or load a web page"
-  description: "Opening it could run a script or load a web page, not just show you its contents. Save it to Downloads to look at it safely instead."
+  description: "It will open:\n" + (root.fileName || "this file") +
+    "\n\nOpening it could run a script or load a web page, not just show you its contents. Save it to Downloads to look at it safely instead."
+  descriptionElide: Text.ElideMiddle
   choices: [
     { objectName: "cancelButton", text: "n  Cancel", selected: false, value: "cancel" },
     { objectName: "saveButton", text: "s  Save to Downloads", selected: true, value: "save" },

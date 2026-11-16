@@ -113,6 +113,9 @@ Item {
   // MediaController.riskyConfirmOpen).
   readonly property alias riskyOpenConfirmOpen: media.riskyConfirmOpen
 
+  // riskyOpenFileName names the file riskyOpenConfirmOpen is about.
+  readonly property alias riskyOpenFileName: media.riskyFileName
+
   // typing is true while the other side is composing a reply.
   property bool typing: false
 

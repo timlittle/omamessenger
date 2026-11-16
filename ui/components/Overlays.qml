@@ -216,6 +216,7 @@ Item {
   // Tests may build this layout without a conversation controller.
   OpenRiskyConfirm {
     open: root.conversationController?.riskyOpenConfirmOpen ?? false
+    fileName: root.conversationController?.riskyOpenFileName ?? ""
     routeKey: root.routeKey
     onConfirmedOpen: root.conversationController.confirmRiskyOpen()
     onSavedToDownloads: root.conversationController.saveRiskyToDownloads()
