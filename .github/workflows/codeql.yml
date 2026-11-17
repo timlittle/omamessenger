@@ -50,7 +50,12 @@ jobs:
 
       - name: Libsignal build tools
         if: matrix.language == 'go'
-        run: ./scripts/install-libsignal-build-tools.sh
+        run: |
+          # CI only, so the plugin's own scripts never call sudo or a package manager.
+          command -v rustup >/dev/null 2>&1 || { sudo apt-get update -q && sudo apt-get install -yq rustup; }
+          rustup toolchain install stable --profile minimal --no-self-update >/dev/null
+          sudo apt-get update -q
+          sudo apt-get install -yq cmake protobuf-compiler clang
 
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         if: matrix.language == 'go'

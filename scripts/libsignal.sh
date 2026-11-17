@@ -24,6 +24,15 @@ if [ -f "$archive" ]; then
     exit 0
 fi
 
+# Only a full 40-character commit is ever fetched: a branch or tag can move.
+case $commit in
+    *[!0-9a-f]* | '') printf 'libsignal: %s is not a full commit hash\n' "$commit" >&2; exit 1 ;;
+esac
+if [ "${#commit}" -ne 40 ]; then
+    printf 'libsignal: %s is not a full 40-character commit hash\n' "$commit" >&2
+    exit 1
+fi
+
 if [ ! -d "$src_dir" ]; then
     printf 'libsignal: fetching %s at %s...\n' "$version" "$commit"
     mkdir -p "$src_dir"

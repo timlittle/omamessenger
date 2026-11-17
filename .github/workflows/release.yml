@@ -92,7 +92,12 @@ jobs:
           cache: false
 
       - name: Libsignal build tools
-        run: ./scripts/install-libsignal-build-tools.sh
+        run: |
+          # CI only, so the plugin's own scripts never call sudo or a package manager.
+          command -v rustup >/dev/null 2>&1 || { sudo apt-get update -q && sudo apt-get install -yq rustup; }
+          rustup toolchain install stable --profile minimal --no-self-update >/dev/null
+          sudo apt-get update -q
+          sudo apt-get install -yq cmake protobuf-compiler clang
 
       # No actions/cache here: zizmor flags caching a build input in a
       # workflow with a later contents: write job as cache poisoning.
