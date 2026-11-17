@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.3.7](https://github.com/timlittle/omamessenger/compare/v0.3.6...v0.3.7) (2026-11-17)
+
+
+### Features
+
+* **app:** sweep away a disappearing message once its timer runs out ([8bdedb3](https://github.com/timlittle/omamessenger/commit/8bdedb3ac72e7a9a69235b7f13dba6f369776754))
+* **signal:** add the Signal connector for linking and receiving ([815ad6f](https://github.com/timlittle/omamessenger/commit/815ad6ffd97b77636d2c26d0b1cb1b51893b0bc8))
+* **signal:** add the signal service to the domain's valid services ([465e4f2](https://github.com/timlittle/omamessenger/commit/465e4f2b99c9eda16128d2052fe76f9f2235d0d2))
+* **signal:** edit and delete sent messages ([a45b2b7](https://github.com/timlittle/omamessenger/commit/a45b2b7a173d8b2c5780ccbe35f76f011c70a259))
+* **signal:** mark conversations read, block and report spam ([a5b4a62](https://github.com/timlittle/omamessenger/commit/a5b4a62d999c904849ae2a0113593cab2cd896bc))
+* **signal:** persist attachment pointers, message metadata and polls ([d831a45](https://github.com/timlittle/omamessenger/commit/d831a45ef5a81e791a207cf69e6ca5a60fdbe717))
+* **signal:** react to messages and vote in polls ([a785a3c](https://github.com/timlittle/omamessenger/commit/a785a3c7c4d3152bba79393745c7b497029a4206))
+* **signal:** send text, media and reply messages ([fbb1fb6](https://github.com/timlittle/omamessenger/commit/fbb1fb67fbe1d8d5947cdcea27b34a75d3cf0a53))
+* **store:** persist disappearing-message expiry and view-once state ([94082fb](https://github.com/timlittle/omamessenger/commit/94082fb9c4fb39d9bb9d29b6ae1c8585c917f384))
+* **store:** remember each chat's disappearing timer ([ca65ed7](https://github.com/timlittle/omamessenger/commit/ca65ed794bfedf2ae06a0d6661071ae41a8724f4))
+* **telegram:** report chat timers ([0f55435](https://github.com/timlittle/omamessenger/commit/0f5543559ff7d9920ad363b4644a3144e7dd7ef7))
+* **ui:** add Signal to the rail, setup and notification sounds ([5f86e2d](https://github.com/timlittle/omamessenger/commit/5f86e2df657a7d237152a83468d65a7114b59fd8))
+* **ui:** show a timer glyph for a disappearing message ([0632ea0](https://github.com/timlittle/omamessenger/commit/0632ea0c6b7e86f0c1cd63fadec6d8282da7a79e))
+* **whatsapp:** report chat timers and send with them ([51a9876](https://github.com/timlittle/omamessenger/commit/51a9876cb498a19bf24d5e20d45b9f8139815a47))
+
+
+### Bug Fixes
+
+* **app:** log when an expired message cannot be removed ([9423acf](https://github.com/timlittle/omamessenger/commit/9423acfc0127937b76a79a2266a0c13b568ac90d))
+* **app:** remove downloaded media when a message expires ([64356a5](https://github.com/timlittle/omamessenger/commit/64356a5103596f3eff99c9d9b53b373cd5832841))
+* **connector:** keep view-once media out of storage and read each service's timer ([db1b482](https://github.com/timlittle/omamessenger/commit/db1b48259fdfa9765b3079f0e491cf22bfd4df94))
+* **deps:** build with Go 1.27.4 for a net/http crash fix ([6b699bb](https://github.com/timlittle/omamessenger/commit/6b699bbc339ff075f82498b0c402d12e039fb636))
+* **deps:** update brotli and klauspost/compress for two decompression bugs ([6347b9c](https://github.com/timlittle/omamessenger/commit/6347b9c11c4446f4b2554da32f086a84efb3d60e))
+* **ingest:** format the drop-log keys with gofumpt's own spacing ([16621ef](https://github.com/timlittle/omamessenger/commit/16621ef8656e1290cc630360f92f61068da3e9aa))
+* **ingest:** log a refused conversation and a message dropped for an unknown one ([9635483](https://github.com/timlittle/omamessenger/commit/963548367e0d3c7eb632678d0ef339f4e987def3))
+* **signal:** give every chat a title so its messages are kept ([3f0f354](https://github.com/timlittle/omamessenger/commit/3f0f35469940393b0613cb354ca43c37d5c23083))
+* **signal:** import media from transferred history ([ce17459](https://github.com/timlittle/omamessenger/commit/ce174594612c608fc5496f00cc74137eea5feed0))
+* **signal:** keep a live photo, sticker, view-once or poll sent without text ([f046e77](https://github.com/timlittle/omamessenger/commit/f046e77f769dbfb22ae20624d6ab06b6a08f96fd))
+* **signal:** open a media download read-write so it can be decrypted ([887e12c](https://github.com/timlittle/omamessenger/commit/887e12c85b14caeb7c87a4397d4601a9c203ed2e))
+* **signal:** read reaction and mention authors sent in binary form ([d997d7d](https://github.com/timlittle/omamessenger/commit/d997d7db2ec4613270fdc2177caf10d2173d020c))
+* **ui:** ask before opening a link whose path differs only in letter case ([11f886e](https://github.com/timlittle/omamessenger/commit/11f886e77920e8e9ac6ab5dec583f25bc690eeb1))
+* **ui:** keep keys inside the mismatched-link question ([0f6d090](https://github.com/timlittle/omamessenger/commit/0f6d0902c9b70fcd03721447f1e26f1adfba52f0))
+* **ui:** name the risky file and never swap it while asking ([425714f](https://github.com/timlittle/omamessenger/commit/425714f7d806d1904f561e99f703277472ad4f8f))
+
 ## [0.3.6](https://github.com/timlittle/omamessenger/compare/v0.3.5...v0.3.6) (2026-11-04)
 
 
