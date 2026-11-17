@@ -64,13 +64,13 @@ Automated checks cover logic and QML validity, not what the window looks like. R
 
 ## Per-developer settings
 
-`make ci-remote` reads `CI_HOST` from `local.mk` (gitignored) for the host to run `make ci` on over ssh; everyone else just uses `make ci`.
+Settings or targets for your own machine go in `local.mk`, which the Makefile includes and git ignores.
 
 ## Release
 
 `whats-new.json`'s top entry is the in-app "What's new" list for the release currently being prepared: add or edit it before merging the release PR, with short, plain, user-worded sentences (no jargon), so a release never ships without its own curated entry. Set its `version` to the release's version by hand; release-please does not touch this file. A release PR whose version has no entry fails `make check`, so a release never ships without one.
 
-release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries, then opens a second pull request, titled `build(release): pin helper checksums for v<version>` on branch `pin-helper-<version>`, committing those binaries' SHA-256 into `helper-checksums` (see [docs/decisions.md](docs/decisions.md) for why that pin is a separate, reviewed commit rather than part of the release commit itself). GitHub never lets a workflow-token pull request trigger a check run on itself, so that pull request starts with no CI: re-run or approve its checks by hand, then review and merge it like any other change. Only once it has landed is the default branch's HEAD installable — `scripts/install-helper.sh` refuses a version with no committed checksum — and only then does `make marketplace-update` succeed: it requests that the Omarchy marketplace listing pick up the default branch's current HEAD, and refuses unless that HEAD is still pinned to the latest release's version *and* that release's checksums.
+release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries, then opens a second pull request, titled `build(release): pin helper checksums for v<version>` on branch `pin-helper-<version>`, committing those binaries' SHA-256 into `helper-checksums` (see [docs/decisions.md](docs/decisions.md) for why that pin is a separate, reviewed commit rather than part of the release commit itself). GitHub never lets a workflow-token pull request trigger a check run on itself, so that pull request starts with no CI: re-run or approve its checks by hand, then review and merge it like any other change. Only once it has landed is the default branch's HEAD installable — `scripts/install-helper.sh` refuses a version with no committed checksum — and only then can the maintainer ask the Omarchy marketplace listing to pick up the default branch's current HEAD, which must still be pinned to the latest release's version *and* that release's checksums.
 
 ## Pull requests
 

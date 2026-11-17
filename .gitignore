@@ -10,7 +10,7 @@
 # Subagent worktrees
 /.claude/worktrees/
 /backend/backend
-# Per-developer Makefile settings (e.g. CI_HOST), never committed.
+# Per-developer Makefile settings and targets, never committed.
 /local.mk
 # Local-only tooling (e.g. the AI security reviewer run before filing a
 # marketplace listing update), never committed.
