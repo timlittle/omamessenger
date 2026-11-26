@@ -40,7 +40,7 @@ permissions: {}
 
 # Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile.
 env:
-  LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
+  LIBSIGNAL_COMMIT: 904c8dc8216073b078a5f2f5090e3da8382e6a92
 
 jobs:
   # Reruns the full CI pipeline against the tagged commit, rather than

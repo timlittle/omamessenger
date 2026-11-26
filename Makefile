@@ -53,8 +53,8 @@ ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0
 
 # libsignal-ffi, pinned to the full commit signalmeow's signalversion
 # names, never a tag (see docs/decisions.md).
-LIBSIGNAL_VERSION := v0.105.0
-LIBSIGNAL_COMMIT := 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
+LIBSIGNAL_VERSION := v0.106.1
+LIBSIGNAL_COMMIT := 904c8dc8216073b078a5f2f5090e3da8382e6a92
 LIBSIGNAL_ARCH := $(shell $(GO) env GOARCH)
 LIBSIGNAL_DIR := build/libsignal/$(LIBSIGNAL_VERSION)/$(LIBSIGNAL_ARCH)
 LIBSIGNAL_ARCHIVE := $(LIBSIGNAL_DIR)/libsignal_ffi.a
