@@ -25,10 +25,10 @@ require (
 	go.mau.fi/util v0.11.1
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
 	golang.org/x/image v0.48.0
-	golang.org/x/net v0.62.0
-	golang.org/x/tools v0.52.1-0.20261106145633-d407941a339a
+	golang.org/x/net v0.63.0
+	golang.org/x/tools v0.53.0
 	google.golang.org/protobuf v1.36.12
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 	rsc.io/qr v0.2.0
 )
 
